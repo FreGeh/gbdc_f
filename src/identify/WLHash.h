@@ -26,8 +26,9 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdio.h>
 
 #include "src/external/md5/md5.h"
-#include "src/external/xxhash/xxhash.h"
 
+#define XXH_INLINE_ALL
+#include "src/external/xxhash/xxhash.h"
 
 #include "src/util/StreamBuffer.h"
 #include "src/util/SolverTypes.h"
@@ -63,7 +64,7 @@ namespace CNF {
             nodes.reserve(literalCount + cnf.nClauses());
 
             // literals
-            for (std::uint64_t var = 1; var <= cnf.nVars(); ++var) {
+            for (std::uint64_t var = 0; var < cnf.nVars(); ++var) {
                 nodes.push_back({ Node::Type::Literal, var, false, 0});
                 nodes.push_back({ Node::Type::Literal, var, true, 0});
             }
@@ -86,8 +87,11 @@ namespace CNF {
                 std::sort(tmp.begin(), tmp.end(),[](Lit a, Lit b){ return a.x < b.x; });
                 tmp.erase(std::unique(tmp.begin(), tmp.end(),[](Lit a, Lit b){ return a.x == b.x; }), tmp.end());
 
-                for (const Lit& lit : *clause) {
-                    std::uint64_t litNode = 2 * (lit.var() - 1) + (lit.sign() ? 1 : 0);
+                for (const Lit& lit : tmp) {
+                    std::uint64_t litNode = 2 * lit.var() + (lit.sign() ? 1 : 0);
+                    if (litNode >= adj.size() || clauseNode >= adj.size()) {
+                        std::cerr << "ERROR: litNode or clauseNode out of bounds: litNode=" << litNode << ", clauseNode=" << clauseNode << ", adj.size()=" << adj.size() << std::endl;
+                    }
                     adj[litNode].push_back(clauseNode);
                     adj[clauseNode].push_back(litNode);
 
@@ -151,9 +155,12 @@ namespace CNF {
 
         std::vector<uint64_t> buffer;
         // loop
+        int iter = 0;
         while (true) {
             // 1. loop condition
-            if (color_new == color_old) break;
+            if (color_new == color_old) {
+                break;
+            }
             color_old.swap(color_new);
 
             // 2. compute raw hashes
@@ -182,4 +189,4 @@ namespace CNF {
     }
 } // namespace CNF
 
-#endif  // WLISOHash_H_
+#endif // WLISOHash_H_
