@@ -27,6 +27,14 @@ A description of the supported domains, feature extractors, and instance transfo
    - For macOS: `brew install libarchive pybind11 ninja`
 
 2. Run `pip install . --user` in the repository directory.
+
+
+### Build & Use Executeable
+1. `mkdir build && cd build`
+2. `cmake ..`
+3. `make`
+4. `./gbdc wlhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats`
+
 <!-- #### Shipped Dependencies
 
 * A copy of the command-line argument parser by P. S. Kumar [`argparse.h`](https://github.com/p-ranav/argparse) (MIT licensed) resides in the `lib` folder.

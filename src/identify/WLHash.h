@@ -1,29 +1,12 @@
-/*************************************************************************************************
-CNFTools -- Copyright (c) 2021, Markus Iser, KIT - Karlsruhe Institute of Technology
-WLISOHash -- Copyright (c) 2025, Frederick Gehm, KIT - Karlsruhe Institute of Technology
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction,
-including without limitation the rights to use, copy, modify, merge, publish, distribute,
-sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or
-substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
-NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
-OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- **************************************************************************************************/
-
 #ifndef WLISOHash_H_
 #define WLISOHash_H_
 
 #include <vector>
 #include <algorithm>
-#include <stdio.h>
+#include <cstdio>
+#include <limits>
+#include <map>
+#include <cstdint>
 
 #include "src/external/md5/md5.h"
 
@@ -33,160 +16,297 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/util/StreamBuffer.h"
 #include "src/util/SolverTypes.h"
 #include "src/util/CNFFormula.h"
-#include <map>
-#include <cstdint>
-
 
 namespace CNF {
-    // one node for each literal and each clause
+
+struct Config {
+    std::size_t k_dimension = 1;
+    std::size_t max_iterations = 100;
+    bool print_stats = false;
+    bool remove_duplicate_literals = true;
+    bool early_stopping = true;
+    bool split_nodes = true;
+    bool edge_labels = true;
+    bool use128 = false;
+};
+
+struct Stats {
+    std::uint64_t iterations = 0;
+    std::uint64_t num_literal_nodes = 0;
+    std::uint64_t num_clause_nodes = 0;
+    std::uint64_t num_tuples = 0;
+    std::vector<std::uint64_t> num_colors_per_iteration;
+};
+
+struct Graph {
     struct Node {
         enum class Type { Literal, Clause } type;
-        std::uint64_t index;
-        bool polarity; // true if positive (only relevant for Literals, false for Clauses)
-        
-        // --- optional node features for round 0 ---
-        std::uint64_t sizeMetric = 0; // degree for literals, length for clauses
-
+        std::uint64_t idx = 0;
+        bool pol = false;
+        std::uint64_t size = 0;
     };
 
-    // bipartite graph
-    struct Graph {
-        std::vector<Node> nodes;
-        std::vector<std::vector<std::uint64_t>> adj;  // adj[u] = vector with neighbors of u
+    enum class Sign : std::uint8_t { Pos = 0, Neg = 1 };
 
-        // turn CNFFormula into bipartite Graph
-        void toGraph(const CNFFormula& cnf) {
-            nodes.clear();
-            adj.clear();
+    struct Edge {
+        std::uint64_t dst = 0;
+        Sign sign = Sign::Pos;
+    };
 
-            // --- NODES ---
-            const std::uint64_t literalCount = 2 * cnf.nVars();
-            nodes.reserve(literalCount + cnf.nClauses());
+    std::vector<Node> nodes;
+    std::vector<std::vector<Edge>> adj;
 
-            // literals
-            for (std::uint64_t var = 0; var < cnf.nVars(); ++var) {
-                nodes.push_back({ Node::Type::Literal, var, false, 0});
-                nodes.push_back({ Node::Type::Literal, var, true, 0});
+    void build(const CNFFormula& cnf, const Config& cfg, Stats& stats) {
+        nodes.clear();
+        adj.clear();
+
+        const std::uint64_t lit_count = cfg.split_nodes ? 2 * cnf.nVars() : cnf.nVars();
+        const std::uint64_t cl_count = cnf.nClauses();
+
+        stats.num_literal_nodes = lit_count;
+        stats.num_clause_nodes = cl_count;
+
+        nodes.reserve(lit_count + cl_count);
+
+        for (std::uint64_t var = 0; var < cnf.nVars(); ++var) {
+            nodes.push_back({Node::Type::Literal, var, false, 0});
+            if (cfg.split_nodes) {
+                nodes.push_back({Node::Type::Literal, var, true, 0});
+            }
+        }
+
+        for (std::uint64_t i = 0; i < cl_count; ++i) {
+            nodes.push_back({Node::Type::Clause, i, false, 0});
+        }
+
+        adj.resize(nodes.size());
+
+        for (std::uint64_t i = 0; i < cl_count; ++i) {
+            const Cl* clause = cnf[i];
+            std::uint64_t clause_idx = lit_count + i;
+            nodes[clause_idx].size = clause->size();
+
+            std::vector<Lit> lits(clause->begin(), clause->end());
+            std::sort(lits.begin(), lits.end(),[](Lit a, Lit b) { 
+                return a.x < b.x; 
+            });
+            if (cfg.remove_duplicate_literals) {
+                lits.erase(std::unique(lits.begin(), lits.end(), [](Lit a, Lit b) { 
+                    return a.x == b.x; 
+                }), lits.end());
             }
 
-            // clauses
-            for (std::uint64_t i = 0; i < cnf.nClauses(); ++i) {
-                nodes.push_back({ Node::Type::Clause, i, false, 0});
-            }
-
-            // --- ADJ LIST ---
-            adj.resize(nodes.size());
-
-            for (std::uint64_t i = 0; i < cnf.nClauses(); ++i) {
-                const Cl* clause = cnf[i];
-                std::uint64_t clauseNode = literalCount + i;
-                nodes[clauseNode].sizeMetric = clause->size();
-
-                // REMOVE DUPLICATE LITERALS (make optional later on for testing)
-                std::vector<Lit> tmp(clause->begin(), clause->end());
-                std::sort(tmp.begin(), tmp.end(),[](Lit a, Lit b){ return a.x < b.x; });
-                tmp.erase(std::unique(tmp.begin(), tmp.end(),[](Lit a, Lit b){ return a.x == b.x; }), tmp.end());
-
-                for (const Lit& lit : tmp) {
-                    std::uint64_t litNode = 2 * lit.var() + (lit.sign() ? 1 : 0);
-                    if (litNode >= adj.size() || clauseNode >= adj.size()) {
-                        std::cerr << "ERROR: litNode or clauseNode out of bounds: litNode=" << litNode << ", clauseNode=" << clauseNode << ", adj.size()=" << adj.size() << std::endl;
-                    }
-                    adj[litNode].push_back(clauseNode);
-                    adj[clauseNode].push_back(litNode);
-
-                    ++nodes[litNode].sizeMetric;
+            for (const Lit& lit : lits) {
+                std::uint64_t lit_idx;
+                if (cfg.split_nodes) {
+                    lit_idx = 2 * lit.var() + (lit.sign() ? 1 : 0);
+                } else {
+                    lit_idx = lit.var();
                 }
-            }
-        };
-    };
 
-    enum class HashMode {
-        XXH3_64,
-        XXH3_128
-    };
+                Sign edge_sign = cfg.edge_labels
+                    ? (lit.sign() ? Sign::Neg : Sign::Pos)
+                    : Sign::Pos;
 
-    static constexpr HashMode DefaultHashMode = HashMode::XXH3_64;
-
-    struct Hash {
-        static constexpr HashMode mode = DefaultHashMode;
-        
-        static std::uint64_t hash(const void* data, std::uint64_t len) {
-            if constexpr (mode == HashMode::XXH3_64) {
-                return static_cast<std::uint64_t>( XXH3_64bits(data,len) );
+                adj[lit_idx].push_back({clause_idx, edge_sign});
+                adj[clause_idx].push_back({lit_idx, edge_sign});
+                ++nodes[lit_idx].size;
             }
         }
+    }
+};
 
-        static std::string toHex(std::uint64_t v) {
-            char buf[17];
-            std::snprintf(buf, sizeof(buf), "%016llx",
-                            static_cast<unsigned long long>(v));
-            return std::string(buf);
+struct Color {
+    std::uint64_t hi = 0;
+    std::uint64_t lo = 0;
+
+    constexpr Color() = default;
+    constexpr Color(std::uint64_t v) : hi(0), lo(v) {}
+    constexpr Color(std::uint64_t hi_, std::uint64_t lo_) : hi(hi_), lo(lo_) {}
+
+    friend constexpr bool operator==(const Color& a, const Color& b) noexcept {
+        return a.hi == b.hi && a.lo == b.lo;
+    }
+    friend constexpr bool operator<(const Color& a, const Color& b) noexcept {
+        if (a.hi != b.hi) { return a.hi < b.hi; }
+        return a.lo < b.lo;
+    }
+
+    constexpr explicit operator std::uint64_t() const noexcept {
+        return lo;
+    }
+};
+
+struct Tools {
+    static std::uint64_t ipow(std::uint64_t base, std::size_t exp) {
+        constexpr std::uint64_t MAX = std::numeric_limits<std::uint64_t>::max();
+        std::uint64_t result = 1;
+        while (exp--) {
+            if (base != 0 && result > MAX / base) {
+                throw std::overflow_error("ipow overflow");
+            }
+            result *= base;
         }
-    };
+        return result;
+    }
 
-    inline std::uint64_t hashNewColor(std::uint64_t old_color, const std::vector<std::uint64_t> &neighbours) {
-        std::vector<std::uint64_t> buf;
-        buf.reserve(neighbours.size()+1);
+    static std::uint64_t tuple_to_id(const std::vector<std::uint64_t>& tuple, std::uint64_t nodes) {
+        std::uint64_t id = 0;
+        std::uint64_t base = 1;
+        for (std::size_t i = 0; i < tuple.size(); ++i) {
+            id += base * tuple[i];
+            base *= nodes;
+        }
+        return id;
+    }
+
+    static void id_to_tuple(std::uint64_t id, std::size_t k, std::uint64_t nodes, std::vector<std::uint64_t>& tuple) {
+        tuple.resize(k);
+        for (std::size_t i = 0; i < k; ++i) {
+            tuple[i] = id % nodes;
+            id /= nodes;
+        }
+    }
+
+    static Color hash(const void* data, std::size_t len, bool use128) {
+        if (use128) {
+            auto h = XXH3_128bits(data, len);
+            return Color{h.high64, h.low64};
+        }
+        return Color{XXH3_64bits(data, len)};
+    }
+
+    static Color recolor(Color old_color, const std::vector<Color>& neighbours, bool use128) {
+        std::vector<Color> buf;
+        buf.reserve(neighbours.size() + 1);
         buf.push_back(old_color);
         buf.insert(buf.end(), neighbours.begin(), neighbours.end());
-        return Hash::hash(buf.data(), buf.size()*sizeof(buf[0]));
+        return hash(buf.data(), buf.size() * sizeof(Color), use128);
     }
 
-    inline std::uint64_t hashOutput(const std::vector<std::uint64_t> &colored_nodes) {
-        return Hash::hash(colored_nodes.data(),colored_nodes.size()*sizeof(colored_nodes[0]));
+    static Color combine_sign(Color color, std::uint8_t sign) {
+        Color out;
+        out.hi = (color.hi << 1) | (color.lo >> 63);
+        out.lo = (color.lo << 1) | static_cast<std::uint64_t>(sign);
+        return out;
     }
 
-    inline std::uint64_t wlhash(const char* filename) {
-        CNFFormula cnf = CNFFormula(filename);
-        cnf.normalizeVariableNames();
+    static std::string to_hex(Color color) {
+        char buf[33];
+        if (color.hi == 0) {
+            std::snprintf(buf, sizeof(buf), "%016llx",
+                          static_cast<unsigned long long>(color.lo));
+        } else {
+            std::snprintf(buf, sizeof(buf), "%016llx%016llx",
+                          static_cast<unsigned long long>(color.hi),
+                          static_cast<unsigned long long>(color.lo));
+        }
+        return std::string(buf);
+    }
+};
 
-        Graph g;
-        g.toGraph(cnf);
+class Hasher {
+public:
+    explicit Hasher(Config cfg = {}) : cfg_(cfg) {}
 
-        std::vector<uint64_t> color_old(g.nodes.size(), 0);
-        std::vector<uint64_t> color_new(g.nodes.size(), 0);
-        std::vector<uint64_t> raw(g.nodes.size());
+    std::string operator()(const CNFFormula& cnf) {
+        graph_.build(cnf, cfg_, stats_);
+        return run_refinement();
+    }
+
+    const Stats& stats() const noexcept { 
+        return stats_; 
+    }
+
+private:
+    Config cfg_;
+    Stats stats_;
+    Graph graph_;
+
+    std::string run_refinement() {
+        const std::uint64_t nodes = graph_.nodes.size();
+        const std::size_t k = cfg_.k_dimension;
+        const std::uint64_t num_tuple = Tools::ipow(nodes, k);
+
+        stats_.num_tuples = num_tuple;
+
+        std::vector<Color> old_colors(num_tuple, Color{0});
+        std::vector<Color> new_colors(num_tuple, Color{0});
+        std::vector<Color> raw(num_tuple);
+
+        std::vector<std::uint64_t> tuple;
 
         // round 0
-        for (std::uint64_t u = 0; u < g.nodes.size(); ++u) {
-            color_new[u] = g.nodes[u].sizeMetric; // initial coloring
+        for (std::uint64_t id = 0; id < num_tuple; ++id) {
+            Tools::id_to_tuple(id, k, nodes, tuple);
+
+            Color color = Color{0};
+            for (auto v : tuple) {
+                Color initial_color = Color{graph_.nodes[v].size};
+                color = Tools::recolor(color, {initial_color}, cfg_.use128);
+            }
+            new_colors[id] = color;
         }
 
-        std::vector<uint64_t> buffer;
-        // loop
-        int iter = 0;
-        while (true) {
-            // 1. loop condition
-            if (color_new == color_old) {
+        // refinement loop
+        for (stats_.iterations = 0; stats_.iterations < cfg_.max_iterations; ++stats_.iterations) {
+            if (new_colors == old_colors) {
                 break;
             }
-            color_old.swap(color_new);
+            old_colors.swap(new_colors);
 
-            // 2. compute raw hashes
-            std::vector<uint64_t> raw(g.nodes.size());
-            for (std::uint64_t u = 0; u < g.nodes.size(); ++u) {
-                buffer.clear();
-                for (uint64_t w : g.adj[u]) {
-                    buffer.push_back(color_old[w]);
+            std::vector<std::uint64_t> child(k);
+            std::vector<Color> neighbours;
+
+            for (std::uint64_t id = 0; id < num_tuple; ++id) {
+                Tools::id_to_tuple(id, k, nodes, tuple);
+                neighbours.clear();
+
+                for (std::size_t dim = 0; dim < k; ++dim) {
+                    child = tuple;
+                    for (const auto& e : graph_.adj[tuple[dim]]) {
+                        child[dim] = e.dst;
+                        std::uint64_t child_id = Tools::tuple_to_id(child, nodes);
+                        neighbours.push_back(Tools::combine_sign(old_colors[child_id], static_cast<std::uint8_t>(e.sign)));
+                    }
                 }
-                std::sort(buffer.begin(), buffer.end());
-                raw[u] = hashNewColor(color_old[u], buffer);
+
+                std::sort(neighbours.begin(), neighbours.end());
+                raw[id] = Tools::recolor(old_colors[id], neighbours, cfg_.use128);
             }
 
-            // 3. canonise hashes into good color ids
-            std::map<uint64_t,uint64_t> canon;
-            uint64_t next = 0;
-            for (uint64_t u = 0; u < g.nodes.size(); ++u) {
-                auto [it,ins] = canon.emplace(raw[u], next);
-                if (ins) ++next;
-                color_new[u] = it->second;
+            std::map<Color, std::uint64_t> canon;
+            std::uint64_t next = 0;
+
+            for (std::uint64_t id = 0; id < num_tuple; ++id) {
+                auto [it, ins] = canon.emplace(raw[id], next);
+                if (ins) {
+                    ++next;
+                }
+                new_colors[id] = Color{it->second};
+            }
+
+            stats_.num_colors_per_iteration.push_back(next);
+        }
+
+        if (cfg_.print_stats) {
+            std::cout << stats_.iterations << "\n";
+            std::cout << stats_.num_literal_nodes << "," << stats_.num_clause_nodes << " => " << stats_.num_tuples << "\n";
+            for (auto it : stats_.num_colors_per_iteration) {
+                std::cout << it << "\n";
             }
         }
 
-        // output
-        return hashOutput(color_new);
+        return Tools::to_hex(Tools::hash(new_colors.data(), new_colors.size() * sizeof(Color), cfg_.use128));
     }
-} // namespace CNF
+};
+
+inline std::string wlhash(const char* filename, const Config& cfg = {}) {
+    CNFFormula f(filename);
+    f.normalizeVariableNames();
+    return Hasher(cfg)(f);
+}
+
+}
 
 #endif // WLISOHash_H_

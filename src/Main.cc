@@ -30,6 +30,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/identify/ISOHash.h"
 #include "src/identify/WLHash.h"
 
+#include "src/util/CNFFormula.h"
 #include "src/util/SolverTypes.h"
 
 #include "src/util/ResourceLimits.h"
@@ -63,6 +64,15 @@ int main(int argc, char** argv) {
     argparse.add_argument("-t", "--timeout").default_value(0).scan<'i', int>().help("Time limit in seconds");
     argparse.add_argument("-m", "--memout").default_value(0).scan<'i', int>().help("Memory limit in MB");
     argparse.add_argument("-f", "--fileout").default_value(0).scan<'i', int>().help("File size limit in MB"); 
+    
+    // flags for WL Hash
+    argparse.add_argument("--k").default_value(1u).scan<'i', unsigned>().help("Dimension k of WL");
+    argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before giving up");
+    argparse.add_argument("--no-split-nodes").default_value(true).implicit_value(false).help("Create seperate nodes for both polarities");
+    argparse.add_argument("--no-edge-labels").default_value(true).implicit_value(false).help("Store polarity as edge labels");
+    argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
+    argparse.add_argument("--keep-duplicates").default_value(true).implicit_value(false).help("Don't remove duplicate literals from a clause");
+    argparse.add_argument("--hash-128").default_value(false).implicit_value(true).help("Hash is 128bit instead of 64bit");
 
     try {
         argparse.parse_args(argc, argv);
@@ -113,7 +123,17 @@ int main(int argc, char** argv) {
         }
         else if (toolname == "wlhash") {
             if (ext == ".cnf") {
-                std::cout << CNF::wlhash(filename.c_str()) << std::endl;
+                CNF::Config config;
+
+                config.k_dimension = argparse.get<unsigned>("--k");
+                config.max_iterations = argparse.get<unsigned>("--max-iters");
+                config.split_nodes = argparse.get<bool>("--no-split-nodes");
+                config.edge_labels = argparse.get<bool>("--no-edge-labels");
+                config.print_stats = argparse.get<bool>("--print-stats");
+                config.remove_duplicate_literals = argparse.get<bool>("--keep-duplicates");
+                config.use128 = argparse.get<bool>("--hash-128");
+                
+                std::cout << wlhash(filename.c_str(), config) << std::endl;
             }
         }
         else if (toolname == "isohash") {
