@@ -158,6 +158,7 @@ struct Color {
 };
 
 struct Tools {
+    // overflow safe pow
     static std::uint64_t ipow(std::uint64_t base, std::size_t exp) {
         constexpr std::uint64_t MAX = std::numeric_limits<std::uint64_t>::max();
         std::uint64_t result = 1;
@@ -170,6 +171,7 @@ struct Tools {
         return result;
     }
 
+    // Tuple Helper Functions: tuple  <--id_to_tuple--  id  <--tuple_to_id--  tuple
     static std::uint64_t tuple_to_id(const std::vector<std::uint64_t>& tuple, std::uint64_t nodes) {
         std::uint64_t id = 0;
         std::uint64_t base = 1;
@@ -256,7 +258,7 @@ private:
 
         std::vector<std::uint64_t> tuple;
 
-        // round 0
+        // initialize colors
         for (std::uint64_t id = 0; id < num_tuple; ++id) {
             Tools::id_to_tuple(id, k, nodes, tuple);
 
@@ -270,11 +272,14 @@ private:
 
         // refinement loop
         for (stats_.iterations = 0; stats_.iterations < cfg_.max_iterations; ++stats_.iterations) {
+            // loop conditions
             if (new_colors == old_colors) {
                 break;
             }
             old_colors.swap(new_colors);
 
+
+            // compute raw hashes
             std::vector<std::uint64_t> child(k);
             std::vector<Color> neighbours;
 
@@ -295,6 +300,7 @@ private:
                 raw[id] = Tools::recolor(old_colors[id], neighbours, cfg_.use128);
             }
 
+            // canonise hashes into good color ids
             std::map<Color, std::uint64_t> canon;
             std::uint64_t next = 0;
 
@@ -309,6 +315,7 @@ private:
             stats_.num_colors_per_iteration.push_back(next);
         }
 
+        // --print-stats
         if (cfg_.print_stats) {
             std::cout << stats_.iterations << "\n";
             std::cout << stats_.num_literal_nodes << "," << stats_.num_clause_nodes << " => " << stats_.num_tuples << "\n";
@@ -317,6 +324,7 @@ private:
             }
         }
 
+        // Hash in Hex as output
         return Tools::to_hex(Tools::hash(new_colors.data(), new_colors.size() * sizeof(Color), cfg_.use128));
     }
 };
