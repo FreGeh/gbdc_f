@@ -58,5 +58,8 @@ makefile
 config.*
 autom4te.cache
 conf.*
-build
 test/simple
+
+logs/*
+out/*
+err/*
