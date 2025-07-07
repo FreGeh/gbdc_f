@@ -52,3 +52,36 @@ A description of the supported domains, feature extractors, and instance transfo
 * The Python module `gbdc` is used in our project [GBD Benchmark Database](https://github.com/Udopia/gbd)
 
     * [*Collaborative Management of Benchmark Instances and their Attributes* (2020, Iser et al.)](https://arxiv.org/pdf/2009.02995.pdf) -->
+
+
+Requirements: CMake, gcc, py-pybind11, libarchive
+1. spack cmake packages installieren
+2. gbdc bauen etc
+2. gbd mit pip installieren
+3. `gbd -d /nfs/share/instances/gbd/cnf_local.db get -r local -c min > gbd.ae.txt`
+4. mit sbatch und slurm server 
+5. analysieren mit pandas, etc
+
+Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated
+
+- Starten: `sbatch ~/gbdc_f/gbdc_wlhash.slurm`
+- Status: `scontrol show job` und `ls ~/gbdc_f/out | wc -l` und 
+
+`f=$(ls -t ~/gbdc_f/out/*.out | head -1); id=${f##*/}; id=${id%.out}; wl=$(grep -Eo '^[0-9a-f]{16}$' "$f"); orig=$(awk -v h="$id" '$1==h{ $1=""; sub(/^ /,""); print; exit }' ~/gbdc_f/instances.lst); printf 'GBD: %s\nWL : %s\nCNF: %s\n' "$id" "$wl" "$orig"; ~/gbdc_f/build/gbdc wlhash "$orig"` um zu überprüfen ob letztgeschriebenes richtig oder falsch ist
+
+Um jetzt wlhash wirklich zu extrahieren
+```
+OUTDIR=$HOME/gbdc_f/out
+LIST=$HOME/gbdc_f/instances.lst
+RESULT=$HOME/gbdc_f/wlhash_results.tsv
+
+paste \
+  <(awk '{print $1}' "$LIST") \
+  <(for f in "$OUTDIR"/*.out; do
+        grep -Eo '^[0-9a-f]{16}$' "$f"
+    done) \
+  > "$RESULT"
+
+echo "→ Ergebnis in $RESULT"
+head "$RESULT"
+```
