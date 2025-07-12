@@ -85,3 +85,115 @@ paste \
 echo "→ Ergebnis in $RESULT"
 head "$RESULT"
 ```
+
+Requirements: CMake, gcc, py-pybind11, libarchive
+1. spack cmake packages installieren
+2. gbdc bauen etc
+2. gbd mit pip installieren
+3. `gbd -d /nfs/share/instances/gbd/cnf_local.db get -r local -c min > gbd.ae.txt`
+4. mit sbatch und slurm server 
+5. analysieren mit pandas, etc
+
+# Cheathsheet Server:
+Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.lst
+
+1. Server Status Checken
+hoare - 10/20
+`sinfo -p all -o "%N %T %C"`
+
+2. DIRs und so im Slurm Script anpassen
+
+3. Slurm Script mit Sbatch starten
+`sbatch script.slurm`
+
+4. Status prüfen
+`squeue -u $USER`
+`squeue -j <jobid>`
+`scontrol show job <jobid>`
+`sacct -j <jobid> --format=JobID,State,ExitCode,Elapsed`
+`sstat -j <jobid>.0 --format=AveCPU,AveRSS,MaxRSS`
+
+4. Bei Problem stoppen
+`scancel <jobid>`
+`scancel --signal=KILL <jobid>`
+`scancel -u $USER`
+
+5. Anzahl der Ergebnisse
+`ls ~/gbdc_f/out | wc -l`
+`f=$(ls -t ~/gbdc_f/out/*.out | head -1); id=${f##*/}; id=${id%.out}; wl=$(grep -Eo '^[0-9a-f]{16}$' "$f"); orig=$(awk -v h="$id" '$1==h{ $1=""; sub(/^ /,""); print; exit }' ~/gbdc_f/instances.lst); printf 'GBD: %s\nWL : %s\nCNF: %s\n' "$id" "$wl" "$orig"; ~/gbdc_f/build/gbdc wlhash "$orig"` um zu überprüfen ob letztgeschriebenes richtig oder falsch ist
+
+6. Tests
+
+Collisions schneller test:
+```bash
+cut -f3 ~/gbdc_f/wlhash_results_dupes.tsv | sort | uniq -c | sort -nr \
+    > ~/gbdc_f/wlhash_freq_dupes.txt
+
+head ~/gbdc_f/wlhash_freq_dupes.txt
+```
+
+um die entsprechenden Dateien zu finden:
+`target=d60f3b065319a4ec`
+`awk -F'\t' -v t="$target" '$NF==t {print $2}' ~/gbdc_f/wlhash_results.tsv`
+
+https://github.com/arminbiere/scranfilize
+
+
+Jetzt will ich jeweils verschiedene `--max-iters` mit verschiedenen `--k` kombinieren um eine Tabelle zu bekommen am Ende wo x achse die verschiedenen k's ist und y achse immer inkrementell max iterations erhöht. Dadurch kann ich erkennen ob höheres k auch wirklich früher mehr instanzen unterscheiden kann.
+
+Ich ändere außderdem das slurm script und gbdc main sodass es den hash auf std err ausgibt, sodass nicht immer durch alles gewühlt werden muss sondern die ausgabe klarer ist und wirklich alle infos einfach abgreifbar sind und lesbar. `std::cerr << "c Hash: " << wlhash(filename.c_str(), config) << std::endl;`
+
+Was muss ich noch an meinem Slurm Script abändern, dass es wirklich durch --k 1-4 für jede instanz durchgeht. Ich passe auch max cpu auch an die echten cpu kerne von 20 an. und hebe zeitlimit deutlich an weil es nur im notfall erreicht werden soll.
+
+```bash
+  GNU nano 8.0                                                                                                  gbdc_wlhash.slurm                                                                                                            
+#!/bin/bash -l
+#SBATCH --job-name=gbdc_wlhash
+#SBATCH --nodelist=hoare
+#SBATCH --exclusive
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=0
+#SBATCH --time=72:00:00
+#SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build
+#SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.out
+#SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.err
+
+# variablen
+PARALLEL_JOBS=${PARALLEL_JOBS:-20}
+TIME_LIMIT=${TIME_LIMIT:-300}
+LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
+RESULT=/nfs/home/fgehm/gbdc_f/wlhash_results_variable.tsv
+
+BIN=/nfs/home/fgehm/gbdc_f/build/gbdc
+OUTDIR=/nfs/home/fgehm/gbdc_f/out_variable
+ERRDIR=/nfs/home/fgehm/gbdc_f/err_variable
+
+export PATH=$HOME/local/bin:$PATH
+which runsolver  || { echo "runsolver not in PATH";  exit 1; }
+which parallel   || { echo "parallel  not in PATH";  exit 1; }
+
+mkdir -p "$OUTDIR" "$ERRDIR"
+
+while read -r ID INST; do
+    OUT="$OUTDIR/${ID}.out"
+    ERR="$ERRDIR/${ID}.err"
+    if [[ ! -s "$OUT" ]]; then
+        echo "runsolver -C $TIME_LIMIT \"$BIN\" wlhash --k 1 \"$INST\" > \"$OUT\" 2> \"$ERR\""
+        echo "runsolver -C $TIME_LIMIT \"$BIN\" wlhash --k 2 \"$INST\" > \"$OUT\" 2> \"$ERR\""
+        echo "runsolver -C $TIME_LIMIT \"$BIN\" wlhash --k 3 \"$INST\" > \"$OUT\" 2> \"$ERR\""
+        echo "runsolver -C $TIME_LIMIT \"$BIN\" wlhash --k 4 \"$INST\" > \"$OUT\" 2> \"$ERR\""
+    fi
+done < "$LIST" | parallel -j "$PARALLEL_JOBS"
+
+# Merge
+echo "Merging WL-Hashes into $RESULT …"
+paste \
+  <(awk '{print $1}' "$LIST") \
+  <(for f in "$ERRDIR"/*.out; do
+        grep -m1 -Eo '^[0-9a-f]{16}$' "$f"
+    done) \
+  > "$RESULT"
+echo "Done — see $RESULT"
+```
+
+scancel 45957
