@@ -61,11 +61,11 @@ echo -e "ID\tk\tmax_iters\twlhash" > "$RESULT"
 while read -r ID INST; do
   for k in "${K_LIST[@]}"; do
     for it in "${MAX_ITERS_LIST[@]}"; do
-      OUT="$ERRDIR/${ID}_k${k}_i${it}.out"
+      ERR="$ERRDIR/${ID}_k${k}_i${it}.err"
       # Check if the output file exists and is not empty
-      if [[ -s "$OUT" ]]; then
+      if [[ -s "$ERR" ]]; then
         # Read hash
-        HASH=$(grep "c Hash:" "$OUT" | awk '{print $3}')
+        HASH=$(grep "c Hash:" "$ERR" | awk '{print $3}')
         # Write hash into correct result file, if not found write NA
         if [[ -n "$HASH" ]]; then
             echo -e "${ID}\t${k}\t${it}\t${HASH}" >> "$RESULT"

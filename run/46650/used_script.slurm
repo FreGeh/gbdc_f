@@ -61,6 +61,7 @@ echo -e "ID\tk\tmax_iters\twlhash" > "$RESULT"
 while read -r ID INST; do
   for k in "${K_LIST[@]}"; do
     for it in "${MAX_ITERS_LIST[@]}"; do
+    # fehlerhaft hier müsste errdir und .err sein
       OUT="$OUTDIR/${ID}_k${k}_i${it}.out"
       # Check if the output file exists and is not empty
       if [[ -s "$OUT" ]]; then

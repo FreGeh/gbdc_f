@@ -1,0 +1,6 @@
+TOTAL: 31459
+UNIQUE: 28911
+NA: 12
+
+also 
+SAME: 2548 (+- 12)

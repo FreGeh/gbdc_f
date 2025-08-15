@@ -54,6 +54,7 @@ echo -e "ID\tisohash" > "$RESULT"
 
 ## reading all the hashes and parsing into result file
 while read -r ID INST; do
+# here was the error why it didnt parse it properly! it should be .err instead of .out ofc
       ERR="$ERRDIR/${ID}.out"
       # Check if the output file exists and is not empty
       if [[ -s "$ERR" ]]; then

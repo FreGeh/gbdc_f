@@ -54,7 +54,7 @@ echo -e "ID\tisohash" > "$RESULT"
 
 ## reading all the hashes and parsing into result file
 while read -r ID INST; do
-      ERR="$ERRDIR/${ID}.out"
+      ERR="$ERRDIR/${ID}.err"
       # Check if the output file exists and is not empty
       if [[ -s "$ERR" ]]; then
         # Read hash
