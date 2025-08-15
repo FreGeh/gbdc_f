@@ -8,7 +8,7 @@
 1. `mkdir build && cd build`
 2. `cmake ..`
 3. `make`
-4. `./gbdc wlhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats` schneller test ob funktioniert
+4. `./gbdc wlhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats` schneller test ob funktioniert (`1>/dev/null` für stdout ausblenden und `2>/dev/null` für stderr ausblenden)
 
 ## Server Useage
 Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.lst

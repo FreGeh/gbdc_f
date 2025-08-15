@@ -139,10 +139,10 @@ int main(int argc, char** argv) {
         }
         else if (toolname == "isohash") {
             if (ext == ".cnf") {
-                std::cout << CNF::isohash(filename.c_str()) << std::endl;
+                std::cerr << "c Hash: " << CNF::isohash(filename.c_str()) << std::endl;
             }
             else if (ext == ".wcnf") {
-                std::cout << WCNF::isohash(filename.c_str()) << std::endl;
+                std::cout << "c Hash: " << WCNF::isohash(filename.c_str()) << std::endl;
             }
         } 
         else if (toolname == "normalize") {
