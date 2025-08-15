@@ -12,14 +12,14 @@
 
 # folders
 BIN=/nfs/home/fgehm/gbdc_f/build/gbdc
-OUTDIR="/nfs/home/fgehm/gbdc_f/run/${SLURM_JOB_ID}/out"
-ERRDIR="/nfs/home/fgehm/gbdc_f/run/${SLURM_JOB_ID}/err"
+OUTDIR="/nfs/home/fgehm/gbdc_f/out_${SLURM_JOB_ID}"
+ERRDIR="/nfs/home/fgehm/gbdc_f/err_${SLURM_JOB_ID}"
 
 # vars for execution
 PARALLEL_JOBS=${SLURM_NTASKS_PER_NODE:-20} 
 TIME_LIMIT=${TIME_LIMIT:-600}
 LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
-RESULT="/nfs/home/fgehm/gbdc_f/run/${SLURM_JOB_ID}/results_${SLURM_JOB_ID}.tsv"
+RESULT="/nfs/home/fgehm/gbdc_f/results_${SLURM_JOB_ID}.tsv"
 
 # run vars
 MAX_ITERS_LIST=(1 2 3 4 5 6 7 8 9 10 15 25 50 100)
