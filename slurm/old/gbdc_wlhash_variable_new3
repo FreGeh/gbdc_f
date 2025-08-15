@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --mem=0
 #SBATCH --time=30:00:00
-#SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build2
+#SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build
 #SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.out
 #SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.err
 
@@ -22,7 +22,7 @@ TIME_LIMIT=${TIME_LIMIT:-600}
 WALL_LIMIT=${WALL_LIMIT:-900}
 LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
 
-BIN=/nfs/home/fgehm/gbdc_f/build2/gbdc
+BIN=/nfs/home/fgehm/gbdc_f/build/gbdc
 OUTDIR=/nfs/home/fgehm/gbdc_f/out_variable_new6
 ERRDIR=/nfs/home/fgehm/gbdc_f/err_variable_new6
 LOGDIR=/nfs/home/fgehm/gbdc_f/logs
