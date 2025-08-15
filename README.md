@@ -24,14 +24,18 @@ Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.l
 3. Slurm Script mit Sbatch starten
 - `sbatch script.slurm`
 
-4. Status prüfen
+4. Status prüfen (Server)
 - `squeue -u $USER` alle
 - `squeue -j <jobid>` bestimmten
 - `scontrol show job <jobid>`
 - `sacct -j <jobid> --format=JobID,State,ExitCode,Elapsed`
 - `sstat -j <jobid>.0 --format=AveCPU,AveRSS,MaxRSS`
 
-4. Bei Problem stoppen
+4. Status prüfen (Ergebnisse)
+- `tail -f /nfs/home/fgehm/gbdc_f/logs/slurm-<jobid>.out` um logs letzte ausgaben zu sehen
+- `ls err_<jobid>/ | wc -l` Anzahl der schon ausgeführten Commands
+
+5. Bei Problem stoppen
 - `scancel <jobid>` bestimmten
 - `scancel -u $USER` alle
 

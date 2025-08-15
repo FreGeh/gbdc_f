@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#SBATCH --job-name=gbdc_wlhash
+#SBATCH --job-name=gbdc_wlhash_k1
 #SBATCH --nodelist=hoare
 #SBATCH --exclusive
 #SBATCH --cpus-per-task=1
@@ -12,14 +12,14 @@
 
 # folders
 BIN=/nfs/home/fgehm/gbdc_f/build/gbdc
-OUTDIR=/nfs/home/fgehm/gbdc_f/out_variable
-ERRDIR=/nfs/home/fgehm/gbdc_f/err_variable
+OUTDIR="/nfs/home/fgehm/gbdc_f/out_${SLURM_JOB_ID}"
+ERRDIR="/nfs/home/fgehm/gbdc_f/err_${SLURM_JOB_ID}"
 
 # vars for execution
 PARALLEL_JOBS=${SLURM_NTASKS_PER_NODE:-20} 
 TIME_LIMIT=${TIME_LIMIT:-600}
 LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
-RESULT=/nfs/home/fgehm/gbdc_f/1wlhash_results.tsv
+RESULT="/nfs/home/fgehm/gbdc_f/results_${SLURM_JOB_ID}.tsv"
 
 # run vars
 MAX_ITERS_LIST=(1 2 3 4 5 6 7 8 9 10 15 25 50 100)
@@ -32,8 +32,10 @@ which parallel   || { echo "parallel  not in PATH";  exit 1; }
 mkdir -p "$OUTDIR" "$ERRDIR"
 
 # run jobs
-echo "Starting job generation and execution..."
 
+echo "Starting job generation and execution for ${SLURM_JOB_ID}"
+
+## for each instance, for each k, for each iteration run the command
 while read -r ID INST; do
   for k in "${K_LIST[@]}"; do
     for it in "${MAX_ITERS_LIST[@]}"; do
@@ -48,12 +50,14 @@ done < "$LIST" | parallel -j "$PARALLEL_JOBS"
 
 echo "All jobs completed"
 
-# parse results
+# -- parse results --
 
 echo "Starting to parse results"
 
+## nice header
 echo -e "ID\tk\tmax_iters\twlhash" > "$RESULT"
 
+## reading all the hashes and parsing into result file
 while read -r ID INST; do
   for k in "${K_LIST[@]}"; do
     for it in "${MAX_ITERS_LIST[@]}"; do
