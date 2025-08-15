@@ -40,3 +40,7 @@ Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.l
 - `scancel -u $USER` alle
 
 ## Slurm usage
+
+* `cpus-per-task` = threads per SLURM task.
+* `ntasks-per-node` = how many SLURM tasks on a node.
+* `PARALLEL_JOBS` = how many shell jobs GNU Parallel runs at once.
