@@ -64,5 +64,7 @@ conf.*
 test/simple
 
 logs/*
-out_*
+run/*/err
+run/*/out
 err_*
+out_*

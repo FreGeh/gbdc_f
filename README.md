@@ -17,7 +17,9 @@ Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.l
 
 1. Server Status Checken
 - für hoare - 10/20 parallel jobs
-- `sinfo -p all -o "%N %T %C"`
+- schauen wer idle wer verfügbar `sinfo -p all -o "%N %T %C"`
+- resourcen anzeigen lassen `sinfo -o '| %.10P || %.4c || %.10z || %.8m || %.8f' | sed 'a |-'`
+- architektur anzeigen lassen `sinfo -h -N -p all -t idle -o "%N" | xargs -I{} bash -lc 'printf "%-12s " "{}"; scontrol show node {} | sed -n -e "s/.*Arch=\\([^ ]*\\).*/\\1/p" -e "s/.*Features=\\([^ ]*\\).*/ (features: \\1)/p"'`
 
 2. DIRs und so im Slurm Script anpassen
 
@@ -33,7 +35,7 @@ Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.l
 
 4. Status prüfen (Ergebnisse)
 - `tail -f /nfs/home/fgehm/gbdc_f/logs/slurm-<jobid>.out` um logs letzte ausgaben zu sehen
-- `ls err_<jobid>/ | wc -l` Anzahl der schon ausgeführten Commands
+- `ls /nfs/home/fgehm/gbdc_f/run/<jobid>/err | wc -l` Anzahl der schon ausgeführten Commands
 
 5. Bei Problem stoppen
 - `scancel <jobid>` bestimmten
