@@ -74,7 +74,7 @@ echo "Result parsing finished. Final results are in $RESULT"
 
 ## get amount of unique hashes
 
-echo "Computing unique hash count (excluding NA)"
+echo "Computing unique hash count"
 
 # extract hash column (skip header) and print amount of entries, amount of unique hashes, amount of NA into SUMMARY FILE
 TOTAL=$(tail -n +2 "$RESULT" | wc -l | awk '{print $1}')
@@ -84,6 +84,7 @@ NA=$(tail -n +2 "$RESULT" | awk -F'\t' '{print $2}' | grep -c '^NA$' | awk '{pri
   echo "TOTAL: $TOTAL"
   echo "UNIQUE: $UNIQUE"
   echo "NA: $NA"
+  echo "SAME: $(( TOTAL - UNIQUE ))"
 } > "$UNIQUE_SUMMARY_FILE"
 
 echo "Unique hash count written to: $UNIQUE_SUMMARY_FILE"
