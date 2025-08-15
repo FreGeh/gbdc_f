@@ -132,8 +132,9 @@ int main(int argc, char** argv) {
                 config.print_stats = argparse.get<bool>("--print-stats");
                 config.remove_duplicate_literals = argparse.get<bool>("--keep-duplicates");
                 config.use128 = argparse.get<bool>("--hash-128");
+                std::string output = wlhash(filename.c_str(), config);
                 
-                std::cout << wlhash(filename.c_str(), config) << std::endl;
+                std::cerr << "c Hash: " << output << std::endl;
             }
         }
         else if (toolname == "isohash") {

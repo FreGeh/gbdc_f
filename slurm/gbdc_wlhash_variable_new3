@@ -1,0 +1,90 @@
+#!/bin/bash -l
+#SBATCH --job-name=gbdc_wlhash
+#SBATCH --nodelist=hoare
+#SBATCH --exclusive
+#SBATCH --cpus-per-task=160
+#SBATCH --ntasks=1
+#SBATCH --mem=0
+#SBATCH --time=30:00:00
+#SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build2
+#SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.out
+#SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.err
+
+set -euo pipefail
+
+############################
+# Parameter
+############################
+K_LIST=(1)
+MAX_ITERS_LIST=(1 2 4 6 8 10)        # aufsteigend!
+PARALLEL_JOBS=${PARALLEL_JOBS:-140}
+TIME_LIMIT=${TIME_LIMIT:-600}
+WALL_LIMIT=${WALL_LIMIT:-900}
+LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
+
+BIN=/nfs/home/fgehm/gbdc_f/build2/gbdc
+OUTDIR=/nfs/home/fgehm/gbdc_f/out_variable_new6
+ERRDIR=/nfs/home/fgehm/gbdc_f/err_variable_new6
+LOGDIR=/nfs/home/fgehm/gbdc_f/logs
+RESULT=/nfs/home/fgehm/gbdc_f/wlhash_results_variable6.tsv
+
+HASH_RE='[0-9a-fA-F]{16}'
+CMDFILE="$LOGDIR/cmds-${SLURM_JOB_ID}.txt"
+JOBLOG="$LOGDIR/parallel_joblog-${SLURM_JOB_ID}.tsv"
+
+mkdir -p "$OUTDIR" "$ERRDIR" "$LOGDIR"
+
+export PATH="$HOME/local/bin:$PATH"
+which runsolver  >/dev/null || { echo "runsolver not in PATH"; exit 1; }
+which parallel   >/dev/null || { echo "parallel  not in PATH";  exit 1; }
+
+############################
+# 1) Command-Liste erzeugen
+############################
+: > "$CMDFILE"
+
+while read -r ID INST; do
+  [[ -z $ID ]] && continue
+  for k in "${K_LIST[@]}"; do
+    for it in "${MAX_ITERS_LIST[@]}"; do
+      OUT="$OUTDIR/${ID}_k${k}_i${it}.out"
+      ERR="$ERRDIR/${ID}_k${k}_i${it}.err"
+
+      # Falls Lauf bereits erledigt → überspringen
+      if [[ -s $ERR ]] && grep -qE "$HASH_RE" "$ERR"; then
+        continue
+      fi
+
+      printf 'runsolver -C %d -W %d "%s" wlhash --k %d --max-iters %d "%s" > "%s" 2> "%s"\n' \
+             "$TIME_LIMIT" "$WALL_LIMIT" "$BIN" "$k" "$it" "$INST" "$OUT" "$ERR" \
+             >> "$CMDFILE"
+    done
+  done
+done < "$LIST"
+
+############################
+# 2) Solver laufen lassen
+############################
+parallel --joblog "$JOBLOG" -j "$PARALLEL_JOBS" < "$CMDFILE"
+
+############################
+# 3) TSV-Ergebnis bauen
+############################
+{
+  printf "id\tk\titers\thash\n"
+  while read -r ID _; do
+    for k in "${K_LIST[@]}"; do
+      for it in "${MAX_ITERS_LIST[@]}"; do
+        ERR="$ERRDIR/${ID}_k${k}_i${it}.err"
+        OUT="$OUTDIR/${ID}_k${k}_i${it}.out"
+        HASH=$(grep -m1 -Eo "$HASH_RE" "$ERR" 2>/dev/null \
+               || grep -m1 -Eo "$HASH_RE" "$OUT" 2>/dev/null \
+               || true)
+        printf "%s\t%d\t%d\t%s\n" "$ID" "$k" "$it" "$HASH"
+      done
+    done
+  done < "$LIST"
+} > "$RESULT"
+
+echo "Fertig – Resultate in $RESULT"
+echo "Joblog:   $JOBLOG"

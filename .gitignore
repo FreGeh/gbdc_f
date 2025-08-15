@@ -32,6 +32,9 @@ cnftools
 
 build/
 debug/
+old_err_files/
+old_out_files/
+old_results/
 asan/
 .vscode/
 uninstall.info

@@ -254,7 +254,7 @@ private:
 
         std::vector<Color> old_colors(num_tuple, Color{0});
         std::vector<Color> new_colors(num_tuple, Color{0});
-        std::vector<Color> raw(num_tuple);
+        // std::vector<Color> raw(num_tuple);
 
         std::vector<std::uint64_t> tuple;
 
@@ -274,6 +274,7 @@ private:
         for (stats_.iterations = 0; stats_.iterations < cfg_.max_iterations; ++stats_.iterations) {
             // loop conditions
             if (new_colors == old_colors) {
+                std::cerr << "c Iteration Loop Break: " << stats_.iterations << "\n";
                 break;
             }
             old_colors.swap(new_colors);
@@ -282,6 +283,8 @@ private:
             // compute raw hashes
             std::vector<std::uint64_t> child(k);
             std::vector<Color> neighbours;
+            std::map<Color, std::uint64_t> canon;
+            std::uint64_t next = 0;
 
             for (std::uint64_t id = 0; id < num_tuple; ++id) {
                 Tools::id_to_tuple(id, k, nodes, tuple);
@@ -297,15 +300,9 @@ private:
                 }
 
                 std::sort(neighbours.begin(), neighbours.end());
-                raw[id] = Tools::recolor(old_colors[id], neighbours, cfg_.use128);
-            }
 
-            // canonise hashes into good color ids
-            std::map<Color, std::uint64_t> canon;
-            std::uint64_t next = 0;
-
-            for (std::uint64_t id = 0; id < num_tuple; ++id) {
-                auto [it, ins] = canon.emplace(raw[id], next);
+                Color raw = Tools::recolor(old_colors[id], neighbours, cfg_.use128);
+                auto [it, ins] = canon.emplace(raw, next);
                 if (ins) {
                     ++next;
                 }
@@ -317,10 +314,10 @@ private:
 
         // --print-stats
         if (cfg_.print_stats) {
-            std::cout << stats_.iterations << "\n";
-            std::cout << stats_.num_literal_nodes << "," << stats_.num_clause_nodes << " => " << stats_.num_tuples << "\n";
+            std::cerr << "iterations: " << stats_.iterations << "\n";
+            std::cerr << "literal nodes: " << stats_.num_literal_nodes << ", clause nodes: " << stats_.num_clause_nodes << ", total nodes: " << stats_.num_tuples << "\n";
             for (auto it : stats_.num_colors_per_iteration) {
-                std::cout << it << "\n";
+                std::cerr << "color classes: " << it << "\n";
             }
         }
 
