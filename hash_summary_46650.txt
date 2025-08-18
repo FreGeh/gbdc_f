@@ -1,0 +1,39 @@
+TOTAL: 163299
+UNIQUE: 102928
+NA: 2771
+SAME: 57600
+
+# UNIQUE hashes by k
+k=1	UNIQUE=102928
+
+# UNIQUE hashes by k and max_iters
+k=1	max_iters=1	UNIQUE=11613
+k=1	max_iters=2	UNIQUE=11346
+k=1	max_iters=3	UNIQUE=10822
+k=1	max_iters=4	UNIQUE=10711
+k=1	max_iters=5	UNIQUE=10528
+k=1	max_iters=6	UNIQUE=10480
+k=1	max_iters=7	UNIQUE=10381
+k=1	max_iters=8	UNIQUE=10354
+k=1	max_iters=9	UNIQUE=10290
+k=1	max_iters=10	UNIQUE=10268
+k=1	max_iters=15	UNIQUE=10174
+k=1	max_iters=25	UNIQUE=10056
+k=1	max_iters=50	UNIQUE=9743
+k=1	max_iters=100	UNIQUE=9589
+
+# NA counts by k and max_iters
+k=1	max_iters=1	NA=26
+k=1	max_iters=2	NA=38
+k=1	max_iters=3	NA=50
+k=1	max_iters=4	NA=67
+k=1	max_iters=5	NA=85
+k=1	max_iters=6	NA=95
+k=1	max_iters=7	NA=106
+k=1	max_iters=8	NA=119
+k=1	max_iters=9	NA=147
+k=1	max_iters=10	NA=164
+k=1	max_iters=15	NA=218
+k=1	max_iters=25	NA=299
+k=1	max_iters=50	NA=601
+k=1	max_iters=100	NA=756

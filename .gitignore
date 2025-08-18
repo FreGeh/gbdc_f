@@ -68,3 +68,4 @@ run/*/err
 run/*/out
 err_*
 out_*
+venv/
