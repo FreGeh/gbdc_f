@@ -142,11 +142,11 @@ int main(int argc, char** argv) {
         else if (toolname == "wlhyphash") {
             if (ext == ".cnf") {
                 WL::WLSettings config;
-                config.early_stopping = argparse.get<bool>("--early-stopping");
+                // config.early_stopping = argparse.get<bool>("--early-stopping");
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
-                config.split_polarity = argparse.get<bool>("--no-split-nodes");
-                config.edge_labels = argparse.get<bool>("--no-edge-labels");
-                config.node_labels = argparse.get<bool>("--no-node-labels");
+                // config.split_polarity = argparse.get<bool>("--no-split-nodes");
+                // config.edge_labels = argparse.get<bool>("--no-edge-labels");
+                // config.node_labels = argparse.get<bool>("--no-node-labels");
                 config.print_stats = argparse.get<bool>("--print-stats");
 
                 std::string output = WL::wlhyphash(filename.c_str(), config);

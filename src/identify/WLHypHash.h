@@ -26,6 +26,33 @@ struct WLSettings {
     bool print_stats = false;
 };
 
+inline static vector<uint64_t> canonicalize(const vector<vector<uint64_t>>& sigs) {
+    const int n = (int)sigs.size();
+    vector<int> perm(n);
+    iota(perm.begin(), perm.end(), 0);
+
+    // Deterministic order of signatures
+    sort(perm.begin(), perm.end(),
+         [&](int a, int b){ return sigs[a] < sigs[b]; });
+
+    vector<uint64_t> ids(n);
+    uint64_t cur = 0;
+    ids[perm[0]] = 0;
+    for (int i = 1; i < n; ++i) {
+        if (sigs[perm[i]] != sigs[perm[i - 1]]) ++cur;
+        ids[perm[i]] = cur;
+    }
+    return ids;
+}
+
+// counting the amount of color classes
+inline static uint64_t unique_count_hash(const vector<uint64_t>& a) {
+    unordered_set<uint64_t> s;
+    s.reserve(a.size() * 2);
+    for (auto x : a) s.insert(x);
+    return s.size();
+}
+
 // hashing array of 64 bit ints with xxh3
 inline uint64_t hashing(const vector<uint64_t>& data) {
     return data.empty()
@@ -34,54 +61,51 @@ inline uint64_t hashing(const vector<uint64_t>& data) {
 }
 
 inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
+    std::cout << "starting refinement\n";
     WLResult out;
     out.vertex_labels.resize(G.nverts);
     out.edge_labels.resize(G.nedges);
 
-    // buffers reused each iteration
-    vector<uint64_t> neighbor_labels;   neighbor_labels.reserve(32); // multiset to sort
-    vector<uint64_t> signature_parts;   signature_parts.reserve(32); // features + multiset
-
     // 0) Initial Coloring
-    // vertices (polarity and degree)
-    for (int v = 0; v < G.nverts; ++v) {
-        const uint64_t degree   = uint64_t(G.inc_ofs[v + 1] - G.inc_ofs[v]);
-        const uint64_t polarity = uint64_t(v & 1); // 0 = positive literal, 1 = negative literal
-
-        signature_parts.clear();
-        signature_parts.push_back(polarity);
-        signature_parts.push_back(degree);
-
-        out.vertex_labels[v] = hashing(signature_parts);
-    }
-
-    // edges (kind and size)
-    for (int e = 0; e < G.nedges; ++e) {
-        const uint64_t size = uint64_t(G.edge_verts_ofs[e + 1] - G.edge_verts_ofs[e]);
-        const uint64_t kind = uint64_t(int(G.edge_kind[e])); // 0 = clause, 1 = variable-pair
-
-        signature_parts.clear();
-        signature_parts.push_back(kind);
-        signature_parts.push_back(size);
-
-        out.edge_labels[e] = hashing(signature_parts);
-    }
-
-    // 1) Refinement loop
     vector<uint64_t> new_edge_labels(G.nedges);
     vector<uint64_t> new_vertex_labels(G.nverts);
 
-    for (int round = 1; round <= settings.max_iterations; ++round) {
-        bool edges_unchanged   = true;
-        bool vertices_unchanged = true;
+    // vertices: [polarity, degree]
+    {
+        vector<vector<uint64_t>> v_sig(G.nverts);
+        for (int v = 0; v < G.nverts; ++v) {
+            const uint64_t degree   = uint64_t(G.inc_ofs[v + 1] - G.inc_ofs[v]);
+            const uint64_t polarity = uint64_t(v & 1);
+            v_sig[v] = { polarity, degree };
+        }
+        new_vertex_labels = canonicalize(v_sig);
+    }
 
+    // edges: [kind, size]
+    {
+        vector<vector<uint64_t>> e_sig(G.nedges);
+        for (int e = 0; e < G.nedges; ++e) {
+            const uint64_t size = uint64_t(G.edge_verts_ofs[e + 1] - G.edge_verts_ofs[e]);
+            const uint64_t kind = uint64_t(int(G.edge_kind[e]));
+            e_sig[e] = { kind, size };
+        }
+        new_edge_labels = canonicalize(e_sig);
+    }
+
+    // assigning new labels
+    out.vertex_labels = new_vertex_labels;
+    out.edge_labels = new_edge_labels;
+
+    // 1) Refinement loop
+    for (int round = 1; round <= settings.max_iterations; ++round) {
         // a) Recompute each edge label from incident vertex labels
+        vector<vector<uint64_t>> e_sig(G.nedges);
         for (int e = 0; e < G.nedges; ++e) {
             const int begin = G.edge_verts_ofs[e];
             const int end   = G.edge_verts_ofs[e + 1];
 
             // Collect and sort incident vertex labels
-            neighbor_labels.clear();
+            vector<uint64_t> neighbor_labels;
             neighbor_labels.reserve(size_t(end - begin));
             for (int i = begin; i < end; ++i) {
                 const int vtx = G.edge_verts[i];
@@ -90,55 +114,58 @@ inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
             sort(neighbor_labels.begin(), neighbor_labels.end());
 
             // Build signature = [kind, size, sorted neighbor labels]
-            signature_parts.clear();
-            signature_parts.push_back(uint64_t(int(G.edge_kind[e])));
-            signature_parts.push_back(uint64_t(end - begin));
-            signature_parts.insert(signature_parts.end(), neighbor_labels.begin(), neighbor_labels.end());
-
-            const uint64_t label = hashing(signature_parts);
-            edges_unchanged &= (label == out.edge_labels[e]);
-            new_edge_labels[e] = label;
+            e_sig[e].reserve(2 + neighbor_labels.size());
+            e_sig[e].push_back(uint64_t(int(G.edge_kind[e])));
+            e_sig[e].push_back(uint64_t(end - begin));
+            e_sig[e].insert(e_sig[e].end(), neighbor_labels.begin(), neighbor_labels.end());
         }
+        // assign new canonicalized edge
+        new_edge_labels = canonicalize(e_sig);
 
         // b) Recompute each vertex label from incident edge labels
+        vector<vector<uint64_t>> v_sig(G.nverts);
         for (int v = 0; v < G.nverts; ++v) {
             const int begin = G.inc_ofs[v];
             const int end   = G.inc_ofs[v + 1];
 
             // Collect and sort incident edge labels
-            neighbor_labels.clear();
+            vector<uint64_t> neighbor_labels;
             neighbor_labels.reserve(size_t(end - begin));
             for (int i = begin; i < end; ++i) {
                 const int edge = G.inc_edges[i];
-                neighbor_labels.push_back(new_edge_labels[edge]);
+                neighbor_labels.push_back(out.edge_labels[edge]);
             }
             sort(neighbor_labels.begin(), neighbor_labels.end());
 
             // Build signature = [polarity, degree, sorted neighbor labels]
-            signature_parts.clear();
-            signature_parts.push_back(uint64_t(v & 1));
-            signature_parts.push_back(uint64_t(end - begin));
-            signature_parts.insert(signature_parts.end(), neighbor_labels.begin(), neighbor_labels.end());
-
-            const uint64_t label = hashing(signature_parts);
-            vertices_unchanged &= (label == out.vertex_labels[v]);
-            new_vertex_labels[v] = label;
+            v_sig[v].reserve(2 + neighbor_labels.size());
+            v_sig[v].push_back(uint64_t(v & 1));
+            v_sig[v].push_back(uint64_t(end - begin));
+            v_sig[v].insert(v_sig[v].end(), neighbor_labels.begin(), neighbor_labels.end());
         }
+        new_vertex_labels = canonicalize(v_sig);
 
         // --print-stats
         if (settings.print_stats) {
-            cerr << "c iteration: " << out.round;
-            cerr << ", edge labels: " << new_edge_labels.unique();
-            cerr << ", clause labels: " << new_vertex_labels.unique() << "\n";
+            cerr << "c iteration " << round
+                << ", vertex colors " << unique_count_hash(new_vertex_labels)
+                << ", edge colors "   << unique_count_hash(new_edge_labels)
+                << "\n";
         }
+
+        // stabilization check
+        const bool edges_unchanged   = (new_edge_labels   == out.edge_labels);
+        const bool vertices_unchanged= (new_vertex_labels == out.vertex_labels);
 
         // Update state and check convergence
         out.rounds = round;
         out.edge_labels.swap(new_edge_labels);
         out.vertex_labels.swap(new_vertex_labels);
+
         if (edges_unchanged && vertices_unchanged) {
             out.stable = true;
             std::cerr << "stabilized after " << out.rounds << " iterations\n";
+            std::cout << "stabilized\n";
             break;
         }
     }
@@ -178,5 +205,7 @@ inline std::string wlhyphash(const char* filename, WLSettings settings) {
     WLResult res = refine_1WL(g, settings);
     return to_hex64(res.hash);
 }
+
+
 
 } // namespace WL
