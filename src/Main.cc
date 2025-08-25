@@ -29,6 +29,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/identify/GBDHash.h"
 #include "src/identify/ISOHash.h"
 #include "src/identify/WLHash.h"
+#include "src/identify/WLHypHash.h"
 
 #include "src/util/CNFFormula.h"
 #include "src/util/SolverTypes.h"
@@ -37,6 +38,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/transform/cnf2bip.h"
 #include "src/transform/cnf2kis.h"
 #include "src/transform/cnf2cnf.h"
+#include "src/transform/cnf2hypergraph.h"
 
 #include "src/extract/CNFSaniCheck.h"
 #include "src/extract/CNFBaseFeatures.h"
@@ -49,10 +51,10 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 int main(int argc, char** argv) {
     argparse::ArgumentParser argparse("CNF Tools");
 
-    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
+    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash,wlhyphash, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
         .default_value("identify")
         .action([](const std::string& value) {
-            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
+            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "wlhyphash", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
             if (std::find(choices.begin(), choices.end(), value) != choices.end()) {
                 return value;
             }
@@ -122,6 +124,7 @@ int main(int argc, char** argv) {
             }
         }
         else if (toolname == "wlhash") {
+
             if (ext == ".cnf") {
                 CNF::Config config;
 
@@ -133,7 +136,20 @@ int main(int argc, char** argv) {
                 config.remove_duplicate_literals = argparse.get<bool>("--keep-duplicates");
                 config.use128 = argparse.get<bool>("--hash-128");
                 std::string output = wlhash(filename.c_str(), config);
-                
+                std::cerr << "c Hash: " << output << std::endl;
+            }
+        }
+        else if (toolname == "wlhyphash") {
+            if (ext == ".cnf") {
+                WL::WLSettings config;
+                config.early_stopping = argparse.get<bool>("--early-stopping");
+                config.max_iterations = argparse.get<unsigned>("--max-iters");
+                config.split_polarity = argparse.get<bool>("--no-split-nodes");
+                config.edge_labels = argparse.get<bool>("--no-edge-labels");
+                config.node_labels = argparse.get<bool>("--no-node-labels");
+                config.print_stats = argparse.get<bool>("--print-stats");
+
+                std::string output = WL::wlhyphash(filename.c_str(), config);
                 std::cerr << "c Hash: " << output << std::endl;
             }
         }

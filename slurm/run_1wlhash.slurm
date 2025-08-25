@@ -2,8 +2,8 @@
 #SBATCH --job-name=gbdc_wlhash_k1
 #SBATCH --nodelist=hoare
 #SBATCH --exclusive
-#SBATCH --cpus-per-task=1
-#SBATCH --ntasks-per-node=20
+#SBATCH --cpus-per-task=80
+#SBATCH --ntasks-per-node=1
 #SBATCH --mem=0
 #SBATCH --time=72:00:00
 #SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build
