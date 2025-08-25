@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=80
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=0
-#SBATCH --time=72:00:00
+#SBATCH --time=24:00:00
 #SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build
 #SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.out
 #SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.err
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # run vars
-max_iterations=(2 4 6 8 10 12)
+max_iterations=(4 12)
 
 # folders
 BIN=/nfs/home/fgehm/gbdc_f/build/gbdc
