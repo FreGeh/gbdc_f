@@ -26,6 +26,10 @@ public:
     vector<int> inc_ofs;        // size = nverts + 1
     vector<int> inc_edges;      // flat storage of edge ids
 
+    // polarity exposed
+    vector<uint8_t> vertex_polarity;
+    vector<int> vertex_var;
+
     cnf2hypergraph() = default;
     explicit cnf2hypergraph(const CNFFormula& F) { build(F); }
 
@@ -58,6 +62,8 @@ public:
         edge_verts.clear();
         inc_ofs.clear();
         inc_edges.clear();
+        vertex_polarity.clear();
+        vertex_var.clear();
     }
 
     void build(const CNFFormula& F) {
@@ -71,13 +77,23 @@ public:
         edge_clause_id.assign(nedges, -1);
         edge_verts_ofs.resize(nedges + 1);
 
+        vertex_polarity.resize(nverts);
+        vertex_var.resize(nverts);
+
         // First pass, sizes and degrees
         vector<int> edge_sizes(nedges, 0);
         vector<int> deg(nverts, 1); // each literal participates in exactly one var-pair edge
 
         // var-pair edges have size 2
-        for (int v0 = 0; v0 < nvars; ++v0) {
-            edge_sizes[v0] = 2;
+        for (int var0 = 0; var0 < nvars; ++var0) {
+            edge_sizes[var0] = 2;
+            const int vp = literalVertexId(var0, true);
+            const int vn = literalVertexId(var0, false);
+
+            vertex_polarity[vp] = 1; // positive literal
+            vertex_polarity[vn] = 0; // negative literal
+            vertex_var[vp]      = var0;
+            vertex_var[vn]      = var0;
         }
 
         // clause edges sizes, and count literal occurrences for vertex degrees

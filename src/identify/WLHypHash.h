@@ -74,7 +74,7 @@ inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
         vector<vector<uint64_t>> v_sig(G.nverts);
         for (int v = 0; v < G.nverts; ++v) {
             const uint64_t degree   = uint64_t(G.inc_ofs[v + 1] - G.inc_ofs[v]);
-            const uint64_t polarity = uint64_t(v & 1);
+            const uint64_t polarity = settings.split_polarity ? uint64_t(G.vertex_polarity[v]) : 0;
             v_sig[v] = { polarity, degree };
         }
         new_vertex_labels = canonicalize(v_sig);
@@ -139,10 +139,14 @@ inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
             }
             sort(neighbor_labels.begin(), neighbor_labels.end());
 
+            const uint64_t degree   = uint64_t(end - begin);
+            const uint64_t polarity = settings.split_polarity ? uint64_t(G.vertex_polarity[v]) : 0;
+
+
             // Build signature = [polarity, degree, sorted neighbor labels]
             v_sig[v].reserve(2 + neighbor_labels.size());
-            v_sig[v].push_back(uint64_t(v & 1));
-            v_sig[v].push_back(uint64_t(end - begin));
+            v_sig[v].push_back(polarity);
+            v_sig[v].push_back(degree);
             v_sig[v].insert(v_sig[v].end(), neighbor_labels.begin(), neighbor_labels.end());
         }
         new_vertex_labels = canonicalize(v_sig);
