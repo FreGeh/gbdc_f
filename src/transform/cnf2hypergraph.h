@@ -10,9 +10,9 @@ public:
     enum EdgeKind : uint8_t { Clause = 0, VariablePair = 1 };
 
     // sizes
-    int nvars = 0;         // number of CNF variables
-    int nverts = 0;        // = 2 * nvars, literal vertices
-    int nedges = 0;        // = nvars + nClauses, var-pair edges first, then clauses
+    int nvars = 0;
+    int nverts = 0;
+    int nedges = 0;
 
     // edge metadata, size = nedges
     vector<EdgeKind> edge_kind;      // VariablePair or Clause

@@ -28,6 +28,7 @@ struct WLSettings {
 
 inline static vector<uint64_t> canonicalize(const vector<vector<uint64_t>>& sigs) {
     const int n = (int)sigs.size();
+    if (n == 0) return {};
     vector<int> perm(n);
     iota(perm.begin(), perm.end(), 0);
 
@@ -45,13 +46,12 @@ inline static vector<uint64_t> canonicalize(const vector<vector<uint64_t>>& sigs
     return ids;
 }
 
-// counting the amount of color classes
-inline static uint64_t unique_count_hash(const vector<uint64_t>& a) {
-    unordered_set<uint64_t> s;
-    s.reserve(a.size() * 2);
-    for (auto x : a) s.insert(x);
-    return s.size();
+// counting
+inline static uint64_t nonzero_count(const vector<uint64_t>& v) {
+    return uint64_t(std::count_if(v.begin(), v.end(),
+                                  [](uint64_t c){ return c != 0; }));
 }
+
 
 // hashing array of 64 bit ints with xxh3
 inline uint64_t hashing(const vector<uint64_t>& data) {
@@ -61,7 +61,6 @@ inline uint64_t hashing(const vector<uint64_t>& data) {
 }
 
 inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
-    std::cout << "starting refinement\n";
     WLResult out;
     out.vertex_labels.resize(G.nverts);
     out.edge_labels.resize(G.nedges);
@@ -95,6 +94,9 @@ inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
     // assigning new labels
     out.vertex_labels = new_vertex_labels;
     out.edge_labels = new_edge_labels;
+    vector<array<uint64_t,3>> round_fingerprint;
+    round_fingerprint.reserve(settings.max_iterations);
+
 
     // 1) Refinement loop
     for (int round = 1; round <= settings.max_iterations; ++round) {
@@ -145,12 +147,49 @@ inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
         }
         new_vertex_labels = canonicalize(v_sig);
 
+        // creating histogramm
+        // Count vertex labels
+        uint64_t vertex_classes=0;
+        for (auto x : new_vertex_labels) {
+            if (x + 1 > vertex_classes) {
+                vertex_classes = x + 1;
+            }
+        }
+        vector<uint64_t> vertex_count(vertex_classes, 0);
+        for (auto x : new_vertex_labels) ++vertex_count[x];
+
+        // Count edge labels (seperately for both kinds)
+        uint64_t edge_classes = 0;
+        for (auto x : new_edge_labels) {
+            if (x + 1 > edge_classes) { 
+                edge_classes = x + 1;
+            }
+        }
+        vector<uint64_t> clause_count(edge_classes, 0), varpair_count(edge_classes, 0);                   // C=Clause, P=VarPair
+        for (int e = 0; e < G.nedges; ++e) {
+            const uint64_t id = new_edge_labels[e];
+            if (G.edge_kind[e] == CNF::cnf2hypergraph::Clause) {
+                ++clause_count[id];
+            }
+            else {
+                ++varpair_count[id];
+            }
+        }
+
+        // put the counts per color class into this rounds fingerprint
+        uint64_t V_colors = nonzero_count(vertex_count);
+        uint64_t C_colors = nonzero_count(clause_count);    
+        uint64_t P_colors = nonzero_count(varpair_count);
+        round_fingerprint.push_back({V_colors, C_colors, P_colors});
+
         // --print-stats
         if (settings.print_stats) {
+            auto nonzero = [](const vector<uint64_t>& v){ return uint64_t(count_if(v.begin(), v.end(), [](auto c){return c>0;})); };
             cerr << "c iteration " << round
-                << ", vertex colors " << unique_count_hash(new_vertex_labels)
-                << ", edge colors "   << unique_count_hash(new_edge_labels)
-                << "\n";
+                << "  V_colors="  << V_colors
+                << "  E_colors="  << (C_colors + P_colors)
+                << "  (Clause="   << C_colors
+                << ", VarPair="   << P_colors << ")\n";
         }
 
         // stabilization check
@@ -170,18 +209,59 @@ inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
         }
     }
 
-    // 2) Final hash: hash sorted stabilized labels plus sizes
-    vector<uint64_t> edges = out.edge_labels;
-    vector<uint64_t> verts = out.vertex_labels;
-    sort(edges.begin(), edges.end());
-    sort(verts.begin(), verts.end());
+    // 2) Final hash
+    // do last iteration of counting again 
+        // Count vertex labels
+        uint64_t vertex_classes=0;
+        for (auto x : out.vertex_labels) {
+            if (x + 1 > vertex_classes) {
+                vertex_classes = x + 1;
+            }
+        }
+        vector<uint64_t> vertex_count(vertex_classes, 0);
+        for (auto x : out.vertex_labels) ++vertex_count[x];
+
+        // Count edge labels (seperately for both kinds)
+        uint64_t edge_classes = 0;
+        for (auto x : out.edge_labels) {
+            if (x + 1 > edge_classes) { 
+                edge_classes = x + 1;
+            }
+        }
+        vector<uint64_t> clause_count(edge_classes, 0), varpair_count(edge_classes, 0);                   // C=Clause, P=VarPair
+        for (int e = 0; e < G.nedges; ++e) {
+            const uint64_t id = out.edge_labels[e];
+            if (G.edge_kind[e] == CNF::cnf2hypergraph::Clause) {
+                ++clause_count[id];
+            }
+            else {
+                ++varpair_count[id];
+            }
+        }
 
     vector<uint64_t> buffer;
-    buffer.reserve(2 + edges.size() + verts.size());
-    buffer.push_back(uint64_t(G.nedges));
-    buffer.push_back(uint64_t(G.nverts));
-    buffer.insert(buffer.end(), edges.begin(), edges.end());
-    buffer.insert(buffer.end(), verts.begin(), verts.end());
+    buffer.reserve(16 + 2*vertex_classes + 4*edge_classes + 3*round_fingerprint.size());
+
+    // helper to append nonzero (id,count) pairs
+    auto push_pairs = [&](const vector<uint64_t>& cnt) {
+        uint64_t nz = 0; for (auto c : cnt) if (c) ++nz;
+        buffer.push_back(nz);
+        for (uint64_t id = 0; id < cnt.size(); ++id) if (cnt[id]) {
+            buffer.push_back(id);
+            buffer.push_back(cnt[id]);
+        }
+    };
+
+    // vertices, clause-edges, varpair-edges
+    push_pairs(vertex_count);
+    push_pairs(clause_count);
+    push_pairs(varpair_count);
+
+    // add all round fingerprints
+    buffer.push_back(uint64_t(round_fingerprint.size()));
+    for (const auto& fp : round_fingerprint) {
+        buffer.push_back(fp[0]); buffer.push_back(fp[1]); buffer.push_back(fp[2]);
+    }
     out.hash = hashing(buffer);
 
     return out;
