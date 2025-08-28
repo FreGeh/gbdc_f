@@ -19,11 +19,13 @@ struct WLResult {
 struct WLSettings {
     uint64_t max_iterations=10;
     bool remove_duplicate_literals = true;
-    bool early_stopping = false;
     bool split_polarity = true;
-    bool edge_labels = true;
-    bool node_labels = true;
     bool print_stats = false;
+    bool final_multiset = true; // sorted multisets of final vertex labels and final edge labels
+    bool color_inc_matrix = true; // incidence counts between vertex color classes and edge color classes, M[i, j] = number of incidences where a vertex of class i touches an edge of class j
+    bool detailed_histogram = false; // for each vertex color i, histogram the degrees of vertices in that class. For edges, histogram the sizes of edges in that class
+    bool per_round_multiset = false; // at each round, hash the sorted multiset of vertex labels and of edge labels, append these per-round digests
+    bool whole_final_hash = false; // serialize the colored quotient as rows of canonicalized neighbor multisets per class
 };
 
 inline static vector<uint64_t> canonicalize(const vector<vector<uint64_t>>& sigs) {
@@ -48,16 +50,91 @@ inline static vector<uint64_t> canonicalize(const vector<vector<uint64_t>>& sigs
 
 // counting
 inline static uint64_t nonzero_count(const vector<uint64_t>& v) {
-    return uint64_t(std::count_if(v.begin(), v.end(),
-                                  [](uint64_t c){ return c != 0; }));
+    return uint64_t(std::count_if(v.begin(), v.end(),[](uint64_t c){ return c != 0; }));
 }
-
 
 // hashing array of 64 bit ints with xxh3
 inline uint64_t hashing(const vector<uint64_t>& data) {
     return data.empty()
          ? XXH3_64bits(nullptr, 0)
          : XXH3_64bits(data.data(), data.size() * sizeof(uint64_t));
+}
+
+// final hash buffer functions
+// Push nonzero (id, count) pairs of a histogram, deterministically ordered by id.
+inline static void push_pairs(vector<uint64_t>& buffer, const vector<uint64_t>& cnt) {
+    uint64_t nz = 0; for (auto c : cnt) if (c) ++nz;
+    buffer.push_back(nz);
+    for (uint64_t id = 0; id < cnt.size(); ++id) if (cnt[id]) {
+        buffer.push_back(id);
+        buffer.push_back(cnt[id]);
+    }
+}
+
+// Push a sorted multiset of labels: size followed by elements in ascending order.
+inline static void push_sorted_multiset(vector<uint64_t>& buffer, const vector<uint64_t>& labels) {
+    vector<uint64_t> tmp = labels;
+    sort(tmp.begin(), tmp.end());
+    buffer.push_back(uint64_t(tmp.size()));
+    buffer.insert(buffer.end(), tmp.begin(), tmp.end());
+}
+
+// Push a sparse matrix encoded as (rows, cols, nnz, r1,c1,val1, r2,c2,val2, ...),
+// iterating rows then cols in increasing order to ensure determinism.
+inline static void push_sparse_matrix(
+    vector<uint64_t>& buffer, const vector<uint64_t>& mat, uint64_t rows, uint64_t cols)
+{
+    uint64_t nnz = 0; for (auto x : mat) if (x) ++nnz;
+    buffer.push_back(rows);
+    buffer.push_back(cols);
+    buffer.push_back(nnz);
+    for (uint64_t r = 0; r < rows; ++r) {
+        const uint64_t base = r * cols;
+        for (uint64_t c = 0; c < cols; ++c) {
+            uint64_t v = mat[base + c];
+            if (v) { buffer.push_back(r); buffer.push_back(c); buffer.push_back(v); }
+        }
+    }
+}
+
+// Append the two sorted multisets of final labels (vertices, edges).
+inline static void append_final_label_multisets(
+    vector<uint64_t>& buffer, const vector<uint64_t>& vertex_labels, const vector<uint64_t>& edge_labels)
+{
+    push_sorted_multiset(buffer, vertex_labels);
+    push_sorted_multiset(buffer, edge_labels);
+}
+
+// Build and append the colored quotient incidence matrix M[i,j] over final colors.
+inline static void append_color_incidence_matrix(vector<uint64_t>& buffer, 
+    const CNF::cnf2hypergraph& G, const vector<uint64_t>& vertex_labels, const vector<uint64_t>& edge_labels)
+{
+    uint64_t VC = 0, EC = 0;
+    if (!vertex_labels.empty())
+        VC = 1 + *max_element(vertex_labels.begin(), vertex_labels.end());
+    if (!edge_labels.empty())
+        EC = 1 + *max_element(edge_labels.begin(), edge_labels.end());
+
+    // Edge case: empty graph
+    if (VC == 0 || EC == 0) {
+        push_sparse_matrix(buffer, /*mat*/{}, /*rows*/VC, /*cols*/EC);
+        return;
+    }
+
+    vector<uint64_t> M(VC * EC, 0);
+
+    // Count incidences between classes
+    for (int e = 0; e < G.nedges; ++e) {
+        const uint64_t j = edge_labels[e];
+        const int b = G.edge_verts_ofs[e], t = G.edge_verts_ofs[e + 1];
+        for (int k = b; k < t; ++k) {
+            const int v = G.edge_verts[k];
+            const uint64_t i = vertex_labels[v];
+            M[i * EC + j] += 1;
+        }
+    }
+
+    push_sparse_matrix(buffer, M, VC, EC);
 }
 
 inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
@@ -211,29 +288,24 @@ inline WLResult refine_1WL(const CNF::cnf2hypergraph& G, WLSettings settings) {
         if (edges_unchanged && vertices_unchanged) {
             out.stable = true;
             std::cerr << "stabilized after " << out.rounds << " iterations\n";
-            std::cout << "stabilized\n";
             break;
         }
     }
 
     // 2) Final hash
     vector<uint64_t> buffer;
-    buffer.reserve(16 + 2*final_vertex_count.size() + 4*max(final_clause_count.size(),final_varpair_count.size()) + 3*round_fingerprint.size());
-
-    // helper to append nonzero (id,count) pairs
-    auto push_pairs = [&](const vector<uint64_t>& cnt) {
-        uint64_t nz = 0; for (auto c : cnt) if (c) ++nz;
-        buffer.push_back(nz);
-        for (uint64_t id = 0; id < cnt.size(); ++id) if (cnt[id]) {
-            buffer.push_back(id);
-            buffer.push_back(cnt[id]);
-        }
-    };
 
     // vertices, clause-edges, varpair-edges
-    push_pairs(final_vertex_count);
-    push_pairs(final_clause_count);
-    push_pairs(final_varpair_count);
+    push_pairs(buffer, final_vertex_count);
+    push_pairs(buffer, final_clause_count);
+    push_pairs(buffer, final_varpair_count);
+
+    if (settings.final_multiset) {
+        append_final_label_multisets(buffer, out.vertex_labels, out.edge_labels);
+    }
+    if (settings.color_inc_matrix) {
+        append_color_incidence_matrix(buffer, G, out.vertex_labels, out.edge_labels);
+    }
 
     // add all round fingerprints
     buffer.push_back(uint64_t(round_fingerprint.size()));

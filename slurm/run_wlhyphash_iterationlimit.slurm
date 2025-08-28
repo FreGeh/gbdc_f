@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # run vars
-max_iterations=(0 2 4 6 10 20)
+max_iterations=(6 20)
 
 # folders
 BIN=/nfs/home/fgehm/gbdc_f/build/gbdc
