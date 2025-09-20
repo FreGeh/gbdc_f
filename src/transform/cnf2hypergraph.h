@@ -1,161 +1,176 @@
-#pragma once
-#include "bits/stdc++.h"
-using namespace std;
+#ifndef SRC_TRANSFORM_CNF2HYPERGRAPH_H_
+#define SRC_TRANSFORM_CNF2HYPERGRAPH_H_
+
+#include <vector>
+#include <algorithm>
 #include "src/util/CNFFormula.h"
 
 namespace CNF {
 
-class cnf2hypergraph {
+class IncidenceHypergraph {
+    unsigned vars_ = 0;
+    unsigned verts_ = 0;
+    unsigned edges_ = 0;
+    std::vector<unsigned> edge_offsets_;
+    std::vector<unsigned> edge_vertices_;
+    std::vector<unsigned> inc_offsets_;
+    std::vector<unsigned> inc_edges_;
+
 public:
-    enum EdgeKind : uint8_t { Clause = 0, VariablePair = 1 };
+    IncidenceHypergraph() = default;
 
-    // sizes
-    int nvars = 0;
-    int nverts = 0;
-    int nedges = 0;
-
-    // edge metadata, size = nedges
-    vector<EdgeKind> edge_kind;      // VariablePair or Clause
-    vector<int>      edge_clause_id; // -1 for var-pair edges, clause id for clause edges
-
-    // CSR: for each edge, the list of its vertices
-    vector<int> edge_verts_ofs; // size = nedges + 1
-    vector<int> edge_verts;     // flat storage of vertex ids
-
-    // CSR: for each vertex, the list of incident edges
-    vector<int> inc_ofs;        // size = nverts + 1
-    vector<int> inc_edges;      // flat storage of edge ids
-
-    // polarity exposed
-    vector<uint8_t> vertex_polarity;
-    vector<int> vertex_var;
-
-    cnf2hypergraph() = default;
-    explicit cnf2hypergraph(const CNFFormula& F) { build(F); }
-
-    static inline int literalVertexId(int var0, bool positive) {
-        // var0 is 0-based
-        return (var0 << 1) + (positive ? 0 : 1);
-    }
-    static inline pair<int,bool> decodeLiteralVertexId(int vid) {
-        return { vid >> 1, (vid & 1) == 0 };
+    explicit IncidenceHypergraph(const CNFFormula& f) {
+        build(f);
     }
 
-    inline int numVertices()  const { return nverts; }
-    inline int numHyperedges() const { return nedges; }
-
-    // access helpers, return [begin, end) pointer ranges
-    inline pair<const int*, const int*> edgeVertices(int e) const {
-        int s = edge_verts_ofs[e], t = edge_verts_ofs[e + 1];
-        return { &edge_verts[s], &edge_verts[t] };
+    static inline unsigned literalIndex(unsigned var0, bool positive) {
+        return (var0 << 1) | (positive ? 0u : 1u);
     }
-    inline pair<const int*, const int*> vertexIncidentEdges(int v) const {
-        int s = inc_ofs[v], t = inc_ofs[v + 1];
-        return { &inc_edges[s], &inc_edges[t] };
+
+    static inline unsigned varOf(unsigned lit_idx) {
+        return lit_idx >> 1;
+    }
+
+    static inline bool isPositive(unsigned lit_idx) {
+        return (lit_idx & 1u) == 0u;
+    }
+
+    static inline unsigned mateOf(unsigned lit_idx) {
+        return lit_idx ^ 1u;
+    }
+
+    inline unsigned nVars() const {
+        return vars_;
+    }
+
+    inline unsigned nVertices() const {
+        return verts_;
+    }
+
+    inline unsigned nClauses() const {
+        return edges_;
+    }
+
+    struct Span {
+        const unsigned* b;
+        const unsigned* e;
+
+        inline const unsigned* begin() const {
+            return b;
+        }
+
+        inline const unsigned* end() const {
+            return e;
+        }
+
+        inline unsigned size() const {
+            return (unsigned)(e - b);
+        }
+
+        inline bool empty() const {
+            return b == e;
+        }
+
+        inline unsigned operator[](unsigned i) const {
+            return b[i];
+        }
+    };
+
+    inline Span literalsOfClause(unsigned e) const {
+        return { &edge_vertices_[edge_offsets_[e]], &edge_vertices_[edge_offsets_[e + 1]] };
+    }
+
+    inline Span clausesOfLiteral(unsigned v) const {
+        return { &inc_edges_[inc_offsets_[v]], &inc_edges_[inc_offsets_[v + 1]] };
+    }
+
+    inline unsigned degree(unsigned v) const {
+        return inc_offsets_[v + 1] - inc_offsets_[v];
+    }
+
+    inline unsigned clauseSize(unsigned e) const {
+        return edge_offsets_[e + 1] - edge_offsets_[e];
+    }
+
+    void build(const CNFFormula& f) {
+        clear();
+
+        vars_ = (unsigned)f.nVars();
+        verts_ = 2u * vars_;
+        edges_ = (unsigned)f.nClauses();
+
+        edge_offsets_.assign(edges_ + 1, 0u);
+        inc_offsets_.assign(verts_ + 1, 0u);
+
+        if (edges_ == 0u) {
+            return;
+        }
+
+        std::vector<unsigned> edge_size(edges_, 0u);
+        std::vector<unsigned> deg(verts_, 0u);
+
+        for (unsigned cid = 0; cid < edges_; ++cid) {
+            const Cl* c = f[cid];
+            edge_size[cid] = (unsigned)c->size();
+            for (const Lit& lit : *c) {
+                const unsigned v0 = (unsigned)lit.var() - 1u;
+                const bool pos = !lit.sign();
+                ++deg[literalIndex(v0, pos)];
+            }
+        }
+
+        for (unsigned e = 0; e < edges_; ++e) {
+            edge_offsets_[e + 1] = edge_offsets_[e] + edge_size[e];
+        }
+
+        edge_vertices_.resize(edge_offsets_[edges_]);
+
+        for (unsigned v = 0; v < verts_; ++v) {
+            inc_offsets_[v + 1] = inc_offsets_[v] + deg[v];
+        }
+
+        inc_edges_.resize(inc_offsets_[verts_]);
+
+        std::vector<unsigned> cur_edge = edge_offsets_;
+        std::vector<unsigned> cur_inc = inc_offsets_;
+        std::vector<unsigned> lits;
+
+        for (unsigned cid = 0; cid < edges_; ++cid) {
+            const Cl* c = f[cid];
+
+            lits.clear();
+            lits.reserve(c->size());
+
+            for (const Lit& lit : *c) {
+                const unsigned v0 = (unsigned)lit.var() - 1u;
+                const bool pos = !lit.sign();
+                lits.push_back(literalIndex(v0, pos));
+            }
+
+            std::sort(lits.begin(), lits.end());
+
+            for (unsigned li : lits) {
+                edge_vertices_[cur_edge[cid]++] = li;
+                inc_edges_[cur_inc[li]++] = cid;
+            }
+        }
+
+        for (unsigned v = 0; v < verts_; ++v) {
+            std::sort(&inc_edges_[inc_offsets_[v]], &inc_edges_[inc_offsets_[v + 1]]);
+        }
     }
 
     void clear() {
-        nvars = nverts = nedges = 0;
-        edge_kind.clear();
-        edge_clause_id.clear();
-        edge_verts_ofs.clear();
-        edge_verts.clear();
-        inc_ofs.clear();
-        inc_edges.clear();
-        vertex_polarity.clear();
-        vertex_var.clear();
-    }
-
-    void build(const CNFFormula& F) {
-        clear();
-        nvars  = static_cast<int>(F.nVars());
-        nverts = 2 * nvars;
-        const int m = static_cast<int>(F.nClauses());
-        nedges = nvars + m; // var-pair edges [0..nvars-1], clause edges [nvars..nvars+m-1]
-
-        edge_kind.resize(nedges);
-        edge_clause_id.assign(nedges, -1);
-        edge_verts_ofs.resize(nedges + 1);
-
-        vertex_polarity.resize(nverts);
-        vertex_var.resize(nverts);
-
-        // First pass, sizes and degrees
-        vector<int> edge_sizes(nedges, 0);
-        vector<int> deg(nverts, 1); // each literal participates in exactly one var-pair edge
-
-        // var-pair edges have size 2
-        for (int var0 = 0; var0 < nvars; ++var0) {
-            edge_sizes[var0] = 2;
-            const int vp = literalVertexId(var0, true);
-            const int vn = literalVertexId(var0, false);
-
-            vertex_polarity[vp] = 1; // positive literal
-            vertex_polarity[vn] = 0; // negative literal
-            vertex_var[vp]      = var0;
-            vertex_var[vn]      = var0;
-        }
-
-        // clause edges sizes, and count literal occurrences for vertex degrees
-        for (int cid = 0; cid < m; ++cid) {
-            const Cl* clause = F[cid];
-            const int eid = nvars + cid;
-            edge_sizes[eid] = static_cast<int>(clause->size());
-            for (const Lit& lit : *clause) {
-                const int var0 = static_cast<int>(lit.var()); // CNFFormula is 0-based
-                const bool pos = !lit.sign();
-                const int vid  = literalVertexId(var0, pos);
-                ++deg[vid];
-            }
-        }
-
-        // CSR offsets for edges -> vertices
-        edge_verts_ofs[0] = 0;
-        for (int e = 0; e < nedges; ++e) edge_verts_ofs[e + 1] = edge_verts_ofs[e] + edge_sizes[e];
-        edge_verts.resize(edge_verts_ofs[nedges]);
-
-        // CSR offsets for vertices -> incident edges
-        inc_ofs.resize(nverts + 1);
-        inc_ofs[0] = 0;
-        for (int v = 0; v < nverts; ++v) inc_ofs[v + 1] = inc_ofs[v] + deg[v];
-        inc_edges.resize(inc_ofs[nverts]);
-
-        // write cursors
-        vector<int> cur_edge_pos = edge_verts_ofs; // where to write next vertex for each edge
-        vector<int> cur_inc_pos  = inc_ofs;        // where to write next incident edge for each vertex
-
-        // Fill var-pair edges
-        for (int var0 = 0; var0 < nvars; ++var0) {
-            const int eid = var0;
-            edge_kind[eid] = VariablePair;
-
-            const int vp = literalVertexId(var0, true);
-            const int vn = literalVertexId(var0, false);
-
-            edge_verts[cur_edge_pos[eid]++] = vp;
-            edge_verts[cur_edge_pos[eid]++] = vn;
-
-            inc_edges[cur_inc_pos[vp]++] = eid;
-            inc_edges[cur_inc_pos[vn]++] = eid;
-        }
-
-        // Fill clause edges
-        for (int cid = 0; cid < m; ++cid) {
-            const int eid = nvars + cid;
-            edge_kind[eid] = Clause;
-            edge_clause_id[eid] = cid;
-
-            const Cl* clause = F[cid];
-            for (const Lit& lit : *clause) {
-                const int var0 = static_cast<int>(lit.var()); // 1-based to 0-based
-                const bool pos = !lit.sign();
-                const int vid  = literalVertexId(var0, pos);
-
-                edge_verts[cur_edge_pos[eid]++] = vid;
-                inc_edges[cur_inc_pos[vid]++]    = eid;
-            }
-        }
+        vars_ = 0u;
+        verts_ = 0u;
+        edges_ = 0u;
+        edge_offsets_.clear();
+        edge_vertices_.clear();
+        inc_offsets_.clear();
+        inc_edges_.clear();
     }
 };
 
-} // namespace CNF
+}  // namespace CNF
+
+#endif  // SRC_TRANSFORM_CNF2HYPERGRAPH_H_

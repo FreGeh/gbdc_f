@@ -34,7 +34,7 @@ class CNFFormula {
     unsigned total_literals;
 
  public:
-    CNFFormula() : formula(), variables(0) { }
+    CNFFormula() : formula(), variables(0), total_literals(0) { }
 
     explicit CNFFormula(const char* filename) : CNFFormula() {
         readDimacsFromFile(filename);
@@ -78,21 +78,30 @@ class CNFFormula {
 
     inline void clear() {
         formula.clear();
+        variables = 0;
+        total_literals = 0;
     }
 
-    // create gapless representation of variables
-    void normalizeVariableNames() {
-        std::vector<unsigned> name;
-        name.resize(variables+1, 0);
-        unsigned int max = 0;
-        for (Cl* clause : formula) {
-            for (Lit& lit : *clause) {
-                if (name[lit.var()] == 0) name[lit.var()] = max++;
-                lit = Lit(name[lit.var()], lit.sign());
-            }
-        }
-        variables = max;
+    inline void normalizeVariableNames() {
+        if (variables == 0 || formula.empty()) return;
+
+        std::vector<char> seen(variables + 1, 0);
+        for (const Cl* clause : formula)
+            for (const Lit& lit : *clause)
+                seen[(unsigned)lit.var()] = 1;
+
+        std::vector<unsigned> map(variables + 1, 0);
+        unsigned next = 1;
+        for (unsigned v = 1; v <= variables; ++v)
+            if (seen[v]) map[v] = next++;
+
+        for (Cl* clause : formula)
+            for (Lit& lit : *clause)
+                lit = Lit(map[(unsigned)lit.var()], lit.sign());
+
+        variables = next - 1;
     }
+
 
     void readDimacsFromFile(const char* filename) {
         StreamBuffer in(filename);

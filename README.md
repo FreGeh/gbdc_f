@@ -4,11 +4,15 @@
 2. Gewollte Spack module installieren
 3. gbdc clonen
 
+## Scramble 
+`./scranfilize (-p/-P/-r/-R) -f 0 -s 0 source_instances/source_cnf.xz scrambled_instances/r_noindividualflips.cnf`
+also `./scranfilize -r -f 0 -s 0 source_instances/source_cnf.xz scrambled_instances/r_noindividualflips.cnf` zb
+
 ## Build & Use Executeable
 1. `mkdir build && cd build`
 2. `cmake ..`
 3. `make`
-4. `./gbdc wlhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats` schneller test ob funktioniert (`1>/dev/null` für stdout ausblenden und `2>/dev/null` für stderr ausblenden)
+4. `./gbdc wlhyphash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats` schneller test ob funktioniert (`1>/dev/null` für stdout ausblenden und `2>/dev/null` für stderr ausblenden) `./gbdc wlhyphash ../test/scrambled/pP.cnf --print-stats`
 
 ## Server Useage
 Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.lst

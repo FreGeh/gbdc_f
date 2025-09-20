@@ -16,6 +16,7 @@ set -euo pipefail
 max_iterations=(6 20)
 
 # folders
+# cpus 10 later
 BIN=/nfs/home/fgehm/gbdc_f/build/gbdc
 RUN_DIR="/nfs/home/fgehm/gbdc_f/run/${SLURM_JOB_ID}"
 OUTDIR="${RUN_DIR}/out"
@@ -25,7 +26,7 @@ ERRDIR="${RUN_DIR}/err"
 TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
 TIME_LIMIT=${TIME_LIMIT:-6000}
-LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_first_1000.lst}
+LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
 RESULT="${RUN_DIR}/results_${SLURM_JOB_ID}.tsv"
 SUMMARY="${RUN_DIR}/hash_summary_${SLURM_JOB_ID}.txt"
 

@@ -29,7 +29,10 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/identify/GBDHash.h"
 #include "src/identify/ISOHash.h"
 #include "src/identify/WLHash.h"
-#include "src/identify/WLHypHash.h"
+//#include "src/identify/WLHypHash.h"
+#include "src/identify/TimonWLHash.h"
+#include "src/identify/MyWLHash.h"
+
 
 #include "src/util/CNFFormula.h"
 #include "src/util/SolverTypes.h"
@@ -51,10 +54,10 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 int main(int argc, char** argv) {
     argparse::ArgumentParser argparse("CNF Tools");
 
-    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash,wlhyphash, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
+    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash,wlhyphash,wltimon, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
         .default_value("identify")
         .action([](const std::string& value) {
-            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "wlhyphash", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
+            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "wlhyphash","wltimon", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
             if (std::find(choices.begin(), choices.end(), value) != choices.end()) {
                 return value;
             }
@@ -68,14 +71,9 @@ int main(int argc, char** argv) {
     argparse.add_argument("-f", "--fileout").default_value(0).scan<'i', int>().help("File size limit in MB"); 
     
     // flags for WL Hash
-    argparse.add_argument("--k").default_value(1u).scan<'i', unsigned>().help("Dimension k of WL");
     argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before giving up");
-    argparse.add_argument("--no-split-nodes").default_value(true).implicit_value(false).help("Create seperate nodes for both polarities");
-    argparse.add_argument("--no-edge-labels").default_value(true).implicit_value(false).help("Store polarity as edge labels");
     argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
-    argparse.add_argument("--keep-duplicates").default_value(true).implicit_value(false).help("Don't remove duplicate literals from a clause");
-    argparse.add_argument("--hash-128").default_value(false).implicit_value(true).help("Hash is 128bit instead of 64bit");
-
+    
     try {
         argparse.parse_args(argc, argv);
     }
@@ -124,32 +122,12 @@ int main(int argc, char** argv) {
             }
         }
         else if (toolname == "wlhash") {
-
             if (ext == ".cnf") {
-                CNF::Config config;
-
-                config.k_dimension = argparse.get<unsigned>("--k");
+                WLF::WLSettings config;
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
-                config.split_nodes = argparse.get<bool>("--no-split-nodes");
-                config.edge_labels = argparse.get<bool>("--no-edge-labels");
-                config.print_stats = argparse.get<bool>("--print-stats");
-                config.remove_duplicate_literals = argparse.get<bool>("--keep-duplicates");
-                config.use128 = argparse.get<bool>("--hash-128");
-                std::string output = wlhash(filename.c_str(), config);
-                std::cerr << "c Hash: " << output << std::endl;
-            }
-        }
-        else if (toolname == "wlhyphash") {
-            if (ext == ".cnf") {
-                WL::WLSettings config;
-                // config.early_stopping = argparse.get<bool>("--early-stopping");
-                config.max_iterations = argparse.get<unsigned>("--max-iters");
-                // config.split_polarity = argparse.get<bool>("--no-split-nodes");
-                // config.edge_labels = argparse.get<bool>("--no-edge-labels");
-                // config.node_labels = argparse.get<bool>("--no-node-labels");
                 config.print_stats = argparse.get<bool>("--print-stats");
 
-                std::string output = WL::wlhyphash(filename.c_str(), config);
+                std::string output = WLF::wlhyphash(filename.c_str(), config);
                 std::cerr << "c Hash: " << output << std::endl;
             }
         }
