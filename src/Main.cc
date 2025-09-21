@@ -29,10 +29,6 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/identify/GBDHash.h"
 #include "src/identify/ISOHash.h"
 #include "src/identify/WLHash.h"
-//#include "src/identify/WLHypHash.h"
-#include "src/identify/TimonWLHash.h"
-#include "src/identify/MyWLHash.h"
-
 
 #include "src/util/CNFFormula.h"
 #include "src/util/SolverTypes.h"
@@ -57,7 +53,7 @@ int main(int argc, char** argv) {
     argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash,wlhyphash,wltimon, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
         .default_value("identify")
         .action([](const std::string& value) {
-            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "wlhyphash","wltimon", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
+            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
             if (std::find(choices.begin(), choices.end(), value) != choices.end()) {
                 return value;
             }
@@ -71,8 +67,9 @@ int main(int argc, char** argv) {
     argparse.add_argument("-f", "--fileout").default_value(0).scan<'i', int>().help("File size limit in MB"); 
     
     // flags for WL Hash
-    argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before giving up");
+    argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before stopping");
     argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
+    argparse.add_argument("--canonicalize").default_value(false).implicit_value(true).help("Canonicalize color ids instead of using raw color hashes");
     
     try {
         argparse.parse_args(argc, argv);
@@ -126,8 +123,9 @@ int main(int argc, char** argv) {
                 WLF::WLSettings config;
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
                 config.print_stats = argparse.get<bool>("--print-stats");
+                config.canonicalize_color_classes = argparse.get<bool>("--canonicalize");
 
-                std::string output = WLF::wlhyphash(filename.c_str(), config);
+                std::string output = WLF::wlhash(filename.c_str(), config);
                 std::cerr << "c Hash: " << output << std::endl;
             }
         }
