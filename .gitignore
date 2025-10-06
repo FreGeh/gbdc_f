@@ -66,6 +66,9 @@ test/simple
 logs/*
 run/*/err
 run/*/out
+run/*/cmds.txt
+run/*/joblog.tsv
 err_*
 out_*
 venv/
+

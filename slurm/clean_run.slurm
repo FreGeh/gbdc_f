@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=80
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=0
-#SBATCH --time=60:00:00
+#SBATCH --time=58:00:00
 #SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build
 #SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.out
 #SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.err
@@ -22,10 +22,13 @@ mkdir -p "$OUTDIR" "$ERRDIR"
 # exec vars
 TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
-TIME_LIMIT=${TIME_LIMIT:-6000}
+TIME_LIMIT=${TIME_LIMIT:-12000}
+
+# simple per-run setting: change these as needed
+MAX_ITER=(1 2 3 4 5 6 7 8 9 10 11 12)
 
 # NEW: headered TSV with many columns (col1=local, col2=hash/ID)
-LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_1000.lst}
+LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
 
 # env / deps
 export PATH="$HOME/local/bin:$PATH"
@@ -38,33 +41,31 @@ PAR_FLAGS="--will-cite --jobs $PARALLEL_JOBS --delay 0 --no-notice --joblog ${RU
 CMD_LOG="${RUN_DIR}/cmds.txt"; : > "$CMD_LOG"
 
 echo "Starting job generation and execution for ${SLURM_JOB_ID}"
+echo "Max-iters set(s): ${MAX_ITER[*]}"
 
-# Generate commands per row: none | adv | sum
+# Generate commands per row and per max-iters value: modes {none, sum-sort}
 # IMPORTANT: skip header; read TABs; LOCAL=$1, ID=$2
 {
   tail -n +2 "$LIST" | while IFS=$'\t' read -r LOCAL ID _; do
     [[ -z "${LOCAL:-}" || -z "${ID:-}" ]] && continue
 
-    # 1) none
-    OUT="${OUTDIR}/${ID}_none.out"; ERR="${ERRDIR}/${ID}_none.err"
-    if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-      printf 'runsolver -C %d "%s" wlhash "%s" > "%s" 2> "%s"\n' \
-             "$TIME_LIMIT" "$BIN" "$LOCAL" "$OUT" "$ERR"
-    fi
+    for d in "${MAX_ITER[@]}"; do
+      suffix="mi${d}"
 
-    # 2) advanced-sort
-    OUT="${OUTDIR}/${ID}_adv.out"; ERR="${ERRDIR}/${ID}_adv.err"
-    if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-      printf 'runsolver -C %d "%s" wlhash --advanced-sort "%s" > "%s" 2> "%s"\n' \
-             "$TIME_LIMIT" "$BIN" "$LOCAL" "$OUT" "$ERR"
-    fi
+      # 1) none
+      OUT="${OUTDIR}/${ID}_none_${suffix}.out"; ERR="${ERRDIR}/${ID}_none_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" wlhash --max-iters %d "%s" > "%s" 2> "%s"\n' \
+               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
 
-    # 4) sum-sort
-    OUT="${OUTDIR}/${ID}_sum.out"; ERR="${ERRDIR}/${ID}_sum.err"
-    if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-      printf 'runsolver -C %d "%s" wlhash --sum-sort "%s" > "%s" 2> "%s"\n' \
-             "$TIME_LIMIT" "$BIN" "$LOCAL" "$OUT" "$ERR"
-    fi
+      # 2) sum-sort
+      OUT="${OUTDIR}/${ID}_sum_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" wlhash --sum-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
+               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
+    done
   done
 } | tee -a "$CMD_LOG" | parallel $PAR_FLAGS
 

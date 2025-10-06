@@ -9,9 +9,11 @@ using namespace std;
 namespace WLF {
 
 struct WLSettings {
-    uint64_t max_iterations = 10;
+    uint64_t max_iterations = 100;
     bool print_stats = false;
-    bool canonicalize_color_classes = false;
+    bool neigh_hop = false;
+    bool advanced_sort = false;
+    bool sum_sort = false;
 };
 
 struct WLResult {
@@ -21,6 +23,40 @@ struct WLResult {
     int edge_color_classes = 0;
     bool stabilized = false;
 };
+
+// helper functions
+
+inline void radix_sort(std::vector<uint64_t>& a) {
+    const size_t n = a.size();
+    if (n <= 1) return;
+    if (n < 64) { std::sort(a.begin(), a.end()); return; }
+
+    static std::vector<uint64_t> buf;
+    if (buf.size() < n) buf.resize(n);
+
+    for (int pass = 0; pass < 8; ++pass) {
+        size_t cnt[256] = {0};
+        const unsigned shift = static_cast<unsigned>(pass * 8);
+
+        // count
+        for (size_t i = 0; i < n; ++i) {
+            const unsigned byte = static_cast<unsigned>((a[i] >> shift) & 0xFFull);
+            ++cnt[byte];
+        }
+
+        // prefix sums -> positions
+        size_t pos[256];
+        pos[0] = 0;
+        for (int i = 1; i < 256; ++i) pos[i] = pos[i - 1] + cnt[i - 1];
+
+        // stable scatter
+        for (size_t i = 0; i < n; ++i) {
+            const unsigned byte = static_cast<unsigned>((a[i] >> shift) & 0xFFull);
+            buf[pos[byte]++] = a[i];
+        }
+        a.swap(buf);
+    }
+}
 
 using Color = uint64_t;
 
@@ -71,14 +107,158 @@ inline bool same_partition(const vector<Color> &old_colors, const vector<Color> 
 
 inline int get_color_classes(const vector<Color> &colors) {
     unordered_set<Color> unique;
-
     for (auto c : colors) {
         unique.insert(c);
     }
-
     return unique.size();
 }
 
+inline void sort_neigh(std::vector<uint64_t> &neigh, const WLSettings& settings) {
+    if (settings.advanced_sort) radix_sort(neigh);
+    else std::sort(neigh.begin(), neigh.end());
+}
+
+inline void append_neigh(std::vector<uint64_t> &neigh, const WLSettings &settings, std::vector<uint64_t> &buf, std::vector<uint64_t> &pairs) {
+    if (settings.sum_sort) {
+        uint64_t sum = 0, sum2 = 0, x = 0, mn = UINT64_MAX, mx = 0;
+        for (uint64_t c : neigh) {
+            sum += c; 
+            sum2 += c * c; 
+            x ^= c;
+            if (c < mn) mn = c; 
+            if (c > mx) mx = c;
+        }
+        if (neigh.empty()) { mn = 0; mx = 0; }
+        buf.push_back(sum); 
+        buf.push_back(sum2); 
+        buf.push_back(x); 
+        buf.push_back(mn); 
+        buf.push_back(mx);
+    } else {
+        sort_neigh(neigh, settings);
+        encode(neigh, pairs);
+        buf.insert(buf.end(), pairs.begin(), pairs.end());
+    }
+}
+
+inline void append_twohop_vertex(const CNF::IncidenceHypergraph& g, int v, const std::vector<Color>& old_V, std::vector<uint64_t>& buf) {
+    std::unordered_map<Color, uint64_t> freq;
+    auto edges = g.clausesOfLiteral(v);
+    for (int e_id : edges) {
+        auto lits = g.literalsOfClause(e_id);
+        for (int u : lits) {
+            if (u != v) ++freq[ old_V[u] ];
+        }
+    }
+    if (freq.empty()) { 
+        buf.push_back(0); 
+        return; 
+    }
+    std::vector<std::pair<Color,uint64_t>> tmp; tmp.reserve(freq.size());
+    for (auto& kv : freq) tmp.emplace_back(kv.first, kv.second);
+    std::sort(tmp.begin(), tmp.end(), [](auto& a, auto& b){ return a.first < b.first; });
+    buf.push_back(static_cast<uint64_t>(tmp.size()));
+    for (auto& p : tmp) { 
+        buf.push_back(p.first); 
+        buf.push_back(p.second); 
+    }
+}
+
+inline void append_twohop_edge(const CNF::IncidenceHypergraph& g, int e, const std::vector<Color>& old_E, std::vector<uint64_t>& buf) {
+    std::unordered_map<Color, uint64_t> freq;
+    auto verts = g.literalsOfClause(e);
+    for (int v_id : verts) {
+        auto edges2 = g.clausesOfLiteral(v_id);
+        for (int e2 : edges2) {
+            if (e2 != e) ++freq[ old_E[e2] ];
+        }
+    }
+    if (freq.empty()) { 
+        buf.push_back(0); 
+        return; 
+    }
+    std::vector<std::pair<Color,uint64_t>> tmp; tmp.reserve(freq.size());
+    for (auto& kv : freq) tmp.emplace_back(kv.first, kv.second);
+    std::sort(tmp.begin(), tmp.end(), [](auto& a, auto& b){ return a.first < b.first; });
+    buf.push_back(static_cast<uint64_t>(tmp.size()));
+    for (auto& p : tmp) { 
+        buf.push_back(p.first); 
+        buf.push_back(p.second); 
+    }
+}
+
+// important main methods
+
+// initializing colors
+inline void initialize(const CNF::IncidenceHypergraph &graph, vector<Color> &old_V, vector<Color> &old_E) {
+    // edges
+    for (int e = 0; e < graph.nClauses(); e++) {
+        old_E[e]=graph.clauseSize(e);
+    }
+
+    // vertices
+    for (int v = 0; v < graph.nVertices(); v++) {
+        old_V[v]=graph.degree(v);
+    }
+}
+
+// iteration step of assigning new colors
+inline void update_colors(const CNF::IncidenceHypergraph &graph, const WLSettings &settings, vector<Color> &old_V, vector<Color> &old_E, vector<Color> &new_V, vector<Color> &new_E) {
+    std::vector<Color> neigh;
+    std::vector<uint64_t> pairs;
+    const int num_E = graph.nClauses();
+    const int num_V = graph.nVertices();
+    vector<vector<uint64_t>> sign_E(num_E), sign_V(num_V);
+
+    // edges
+    for (int e = 0; e < num_E; e++) {
+        neigh.clear();
+        auto verts = graph.literalsOfClause(e);
+        for (int v_id : verts) {
+            neigh.push_back(old_V[v_id]);
+        }
+
+        // layout: old_E[e], degree, pairs of (color,count)
+        auto &buf = sign_E[e];
+        buf.clear();
+        buf.push_back(old_E[e]);
+        buf.push_back(neigh.size());
+        append_neigh(neigh, settings, buf, pairs);
+        if (settings.neigh_hop) {
+            append_twohop_edge(graph, e, old_E, buf);
+        }
+    }
+
+    // vertices
+    for (int v = 0; v < num_V; v++) {
+        neigh.clear();
+        auto edges = graph.clausesOfLiteral(v);
+
+        for (auto e_id : edges) {
+            neigh.push_back(old_E[e_id]);
+        }
+
+        // layout: old_V[v], old_V[mate(v)], degree, pairs of (color,count)
+        auto &buf = sign_V[v];
+        buf.clear();
+        buf.push_back(old_V[v]);
+        buf.push_back(old_V[graph.mateOf(v)]);
+        buf.push_back(neigh.size());
+        append_neigh(neigh, settings, buf, pairs);
+        if (settings.neigh_hop) {
+            append_twohop_vertex(graph, v, old_V, buf);
+        }
+    }
+
+    new_E.resize(num_E);
+    new_V.resize(num_V);
+
+    //raw
+    for (int e = 0; e < num_E; ++e) new_E[e] = hash_words(sign_E[e]);
+    for (int v = 0; v < num_V; ++v) new_V[v] = hash_words(sign_V[v]);
+}
+
+// calculating final hash
 inline uint64_t digest(const vector<Color> &new_V, const vector<Color> &new_E) {
     unordered_map<Color, uint64_t> cntV, cntE;
     for (Color c : new_V) ++cntV[c];
@@ -97,99 +277,6 @@ inline uint64_t digest(const vector<Color> &new_V, const vector<Color> &new_E) {
     for (auto &p : histE) { buf.push_back(p.first); buf.push_back(p.second); }
 
     return XXH3_64bits(buf.data(), buf.size()*sizeof(uint64_t));
-}
-
-inline void update_colors(const CNF::IncidenceHypergraph &graph, const WLSettings &settings, vector<Color> &old_V, vector<Color> &old_E, vector<Color> &new_V, vector<Color> &new_E) {
-    std::vector<Color> neigh;
-    std::vector<uint64_t> pairs;
-    const int num_E = graph.nClauses();
-    const int num_V = graph.nVertices();
-    vector<vector<uint64_t>> sign_E(num_E), sign_V(num_V);
-
-    // edges
-    for (int e = 0; e < num_E; e++) {
-        neigh.clear();
-        auto verts = graph.literalsOfClause(e);
-        for (int v_id : verts) {
-            neigh.push_back(old_V[v_id]);
-        }
-        sort(neigh.begin(), neigh.end());
-        encode(neigh, pairs);
-
-        // layout: old_E[e], degree, pairs of (color,count)
-        auto &buf = sign_E[e];
-        buf.clear();
-        buf.push_back(old_E[e]);
-        buf.push_back(neigh.size());
-        buf.insert(buf.end(), pairs.begin(), pairs.end());
-    }
-
-    // vertices
-    for (int v = 0; v < num_V; v++) {
-        neigh.clear();
-        auto edges = graph.clausesOfLiteral(v);
-
-        for (auto e_id : edges) {
-            neigh.push_back(old_E[e_id]);
-        }
-        sort(neigh.begin(), neigh.end());
-        encode(neigh, pairs);
-
-        // layout: old_V[v], old_V[mate(v)], degree, pairs of (color,count)
-        auto &buf = sign_V[v];
-        buf.clear();
-        buf.push_back(old_V[v]);
-        buf.push_back(old_V[graph.mateOf(v)]);
-        buf.push_back(neigh.size());
-        buf.insert(buf.end(), pairs.begin(), pairs.end());
-    }
-
-    new_E.resize(num_E);
-    new_V.resize(num_V);
-
-    //raw
-    if (!settings.canonicalize_color_classes) {
-        for (int e = 0; e < num_E; ++e) new_E[e] = hash_words(sign_E[e]);
-        for (int v = 0; v < num_V; ++v) new_V[v] = hash_words(sign_V[v]);
-        return;
-    }
-
-    //canonical
-    // edges
-    if (num_E > 0) {
-        vector<int> ordE(num_E); iota(ordE.begin(), ordE.end(), 0);
-        sort(ordE.begin(), ordE.end(), [&](int a, int b){ return sign_E[a] < sign_E[b]; });
-        Color color_id_e = 0;
-        new_E[ordE[0]] = color_id_e;
-        for (int i = 1; i < num_E; ++i) {
-            if (sign_E[ordE[i]] != sign_E[ordE[i-1]]) color_id_e++;
-            new_E[ordE[i]] = color_id_e;
-        }
-    }
-
-    if (num_V > 0) {
-        // vertices
-        vector<int> ordV(num_V); iota(ordV.begin(), ordV.end(), 0);
-        sort(ordV.begin(), ordV.end(), [&](int a, int b){ return sign_V[a] < sign_V[b]; });
-        Color color_id_v = 0;
-        new_V[ordV[0]] = color_id_v;
-        for (int i = 1; i < num_V; ++i) {
-            if (sign_V[ordV[i]] != sign_V[ordV[i-1]]) color_id_v++;
-            new_V[ordV[i]] = color_id_v;
-        }
-    }
-}
-
-inline void initialize(const CNF::IncidenceHypergraph &graph, vector<Color> &old_V, vector<Color> &old_E) {
-    // edges
-    for (int e = 0; e < graph.nClauses(); e++) {
-        old_E[e]=graph.clauseSize(e);
-    }
-
-    // vertices
-    for (int v = 0; v < graph.nVertices(); v++) {
-        old_V[v]=graph.degree(v);
-    }
 }
 
 // main function
@@ -215,16 +302,12 @@ WLResult run(const CNF::IncidenceHypergraph &graph, const WLSettings &settings) 
 
         // stabilization
         bool same_V=false, same_E=false;
-        if (!settings.canonicalize_color_classes) {
-            same_V = same_partition(old_V, new_V); 
-            same_E = same_partition(old_E, new_E);
-        } else {
-            same_V = (old_V == new_V);
-            same_E = (old_E == new_E);
-        }
+        same_V = same_partition(old_V, new_V); 
+        same_E = same_partition(old_E, new_E);
         if (same_V && same_E) { 
             out.hash = digest(new_V, new_E);
             out.stabilized=true;
+            std::cerr << "c stabilized: " << out.round << "\n";
             return out;
         }
 

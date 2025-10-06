@@ -4,15 +4,24 @@
 2. Gewollte Spack module installieren
 3. gbdc clonen
 
+## Build instance list
+1. go into venv
+2. set db var `export GBD_DB="/nfs/share/instances/gbd/cnf_local.db:/nfs/home/fgehm/gbd/data/base.db:/nfs/home/fgehm/gbd/data/meta.db"` 
+3. get all wanted features in one instance file
+```bash
+gbd get -g cnf_local:local -r meta:hash meta:isohash meta:family meta:result meta:track base:clauses base:variables base:bytes base:cls1 base:cls2 base:cls3 base:cls4 base:cls5 base:cls6 base:cls7 base:cls8 base:cls9 base:cls10p base:horn base:invhorn base:positive base:negative -c min -H -d $'\t' > instances_new.lst
+```
+
+
 ## Scramble 
-`./scranfilize (-p/-P/-r/-R) -f 0 -s 0 source_instances/source_cnf.xz scrambled_instances/r_noindividualflips.cnf`
+`./scranfilize (-p/-P/-r/-R) -f 0.5 source_instances/source_cnf.xz scrambled_instances/r_noindividualflips.cnf`
 also `./scranfilize -r -f 0 -s 0 source_instances/source_cnf.xz scrambled_instances/r_noindividualflips.cnf` zb
 
 ## Build & Use Executeable
 1. `mkdir build && cd build`
 2. `cmake ..`
 3. `make`
-4. `./gbdc wlhyphash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats` schneller test ob funktioniert (`1>/dev/null` für stdout ausblenden und `2>/dev/null` für stderr ausblenden) `./gbdc wlhyphash ../test/scrambled/pP.cnf --print-stats`
+4. `./gbdc wlhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats` schneller test ob funktioniert (`1>/dev/null` für stdout ausblenden und `2>/dev/null` für stderr ausblenden) `./gbdc wlhash ../test/scrambled/halfflips/p_half_flips.cnf --print-stats`
 
 ## Server Useage
 Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.lst
@@ -40,6 +49,7 @@ Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.l
 4. Status prüfen (Ergebnisse)
 - `tail -f /nfs/home/fgehm/gbdc_f/logs/slurm-<jobid>.out` um logs letzte ausgaben zu sehen
 - `ls /nfs/home/fgehm/gbdc_f/run/<jobid>/err | wc -l` Anzahl der schon ausgeführten Commands
+- `ls run/49265/err/ | wc -l`
 
 5. Bei Problem stoppen
 - `scancel <jobid>` bestimmten

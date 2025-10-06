@@ -50,7 +50,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 int main(int argc, char** argv) {
     argparse::ArgumentParser argparse("CNF Tools");
 
-    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash,wlhyphash,wltimon, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
+    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
         .default_value("identify")
         .action([](const std::string& value) {
             static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
@@ -69,7 +69,9 @@ int main(int argc, char** argv) {
     // flags for WL Hash
     argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before stopping");
     argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
-    argparse.add_argument("--canonicalize").default_value(false).implicit_value(true).help("Canonicalize color ids instead of using raw color hashes");
+    argparse.add_argument("--neigh-hop").default_value(false).implicit_value(true).help("Add additional information via neighbor hops");
+    argparse.add_argument("--advanced-sort").default_value(false).implicit_value(true).help("Use Radix Sort");
+    argparse.add_argument("--sum-sort").default_value(false).implicit_value(true).help("Use a fast Sum Sort");
     
     try {
         argparse.parse_args(argc, argv);
@@ -123,7 +125,9 @@ int main(int argc, char** argv) {
                 WLF::WLSettings config;
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
                 config.print_stats = argparse.get<bool>("--print-stats");
-                config.canonicalize_color_classes = argparse.get<bool>("--canonicalize");
+                config.neigh_hop = argparse.get<bool>("--neigh-hop");
+                config.advanced_sort = argparse.get<bool>("--advanced-sort");
+                config.sum_sort = argparse.get<bool>("--sum-sort");
 
                 std::string output = WLF::wlhash(filename.c_str(), config);
                 std::cerr << "c Hash: " << output << std::endl;
