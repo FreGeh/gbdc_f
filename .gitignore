@@ -72,3 +72,9 @@ err_*
 out_*
 venv/
 
+
+# Large result artifacts
+results/*.tsv
+run/**/results*.tsv
+
+run/**/results_upd.tsv

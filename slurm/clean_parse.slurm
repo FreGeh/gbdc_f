@@ -1,114 +1,162 @@
 #!/bin/bash -l
-#SBATCH --job-name=gbdc_join
-#SBATCH --partition=liskov
+#SBATCH --job-name=gbdc_wlhash_parse
+#SBATCH --partition=hoare
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=80
 #SBATCH --exclusive
 #SBATCH --mem=0
-#SBATCH --time=00:20:00
+#SBATCH --time=04:00:00
 #SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build
-#SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/join-%j.out
-#SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/join-%j.err
+#SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/parse-%j.out
+#SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/parse-%j.err
 
 set -euo pipefail
 
 # >>> Set your run id here <<<
-RUN_ID="49265"
+RUN_ID="49379"
 
 RUN_DIR="/nfs/home/fgehm/gbdc_f/run/${RUN_ID}"
-RESULTS="${RUN_DIR}/results.tsv"                   # results live inside the run dir
-INSTANCES="/nfs/home/fgehm/gbdc_f/instances.lst"   # “normal” location (project root)
-OUT="${RUN_DIR}/results_joined.tsv"                # new output file
+OUTDIR="${RUN_DIR}/out"
+ERRDIR="${RUN_DIR}/err"
+RESULTS="${RUN_DIR}/results.tsv"
 
-echo "Joining:"
-echo "  RESULTS  : $RESULTS"
-echo "  INSTANCES: $INSTANCES"
-echo "  OUT      : $OUT"
+echo "Parsing run directory: ${RUN_DIR}"
+[[ -d "$OUTDIR" && -d "$ERRDIR" ]] || { echo "Missing out/ or err/ in ${RUN_DIR}"; exit 1; }
 
-[[ -f "$RESULTS" ]]   || { echo "Missing $RESULTS"; exit 1; }
-[[ -f "$INSTANCES" ]] || { echo "Missing $INSTANCES"; exit 1; }
+export RUN_DIR OUTDIR ERRDIR RESULTS
 
-awk -v out="$OUT" '
-BEGIN {
-  FS = OFS = "\t"
-  ireq_str = "hash local isohash family result clauses variables bytes cls1 cls2 cls3 cls4 cls5 cls6 cls7 cls8 cls9 cls10p horn invhorn positive negative"
-  rreq_str = "hash mode wlhash stabilized_at cpu_time_s max_mem_kib"
-  ni = split(ireq_str, ireq, " ")
-  nr = split(rreq_str, rreq, " ")
-}
+command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
 
-# ------ Pass 1: read instances.lst, build map keyed by hash ------
-FNR==1 && NR==FNR {
-  for (i=1; i<=NF; i++) IIdx[$i] = i
-  for (i=1; i<=ni; i++) {
-    if (!(ireq[i] in IIdx)) {
-      print "Missing column in instances.lst:", ireq[i] > "/dev/stderr"
-      exit 1
-    }
-  }
-  next
-}
-NR==FNR {
-  key = $(IIdx["hash"])
-  v = $(IIdx["local"])
-  v = v OFS $(IIdx["isohash"])
-  v = v OFS $(IIdx["family"])
-  v = v OFS $(IIdx["result"])
-  v = v OFS $(IIdx["clauses"])
-  v = v OFS $(IIdx["variables"])
-  v = v OFS $(IIdx["bytes"])
-  v = v OFS $(IIdx["cls1"])
-  v = v OFS $(IIdx["cls2"])
-  v = v OFS $(IIdx["cls3"])
-  v = v OFS $(IIdx["cls4"])
-  v = v OFS $(IIdx["cls5"])
-  v = v OFS $(IIdx["cls6"])
-  v = v OFS $(IIdx["cls7"])
-  v = v OFS $(IIdx["cls8"])
-  v = v OFS $(IIdx["cls9"])
-  v = v OFS $(IIdx["cls10p"])
-  v = v OFS $(IIdx["horn"])
-  v = v OFS $(IIdx["invhorn"])
-  v = v OFS $(IIdx["positive"])
-  v = v OFS $(IIdx["negative"])
-  inst_map[key] = v
-  next
-}
+python3 - << 'PY'
+import os, re, sys
 
-# ------ Pass 2: read results.tsv, write joined file ------
-FNR==1 {
-  for (i=1; i<=NF; i++) RIdx[$i] = i
-  # tolerate results header using `id` instead of `hash`
-  if (!("hash" in RIdx) && ("id" in RIdx)) RIdx["hash"] = RIdx["id"]
+run_dir  = os.environ['RUN_DIR']
+outdir   = os.environ['OUTDIR']
+errdir   = os.environ['ERRDIR']
+results_path = os.environ['RESULTS']
 
-  for (i=1; i<=nr; i++) {
-    if (!(rreq[i] in RIdx)) {
-      print "Missing column in results.tsv:", rreq[i] > "/dev/stderr"
-      exit 1
-    }
-  }
+# <id>_<mode>_mi<iters>.(err|out)
+fname_re = re.compile(r'^(?P<id>[0-9a-fA-F]{8,})_(?P<mode>[A-Za-z0-9\-]+)_mi(?P<iters>\d+)\.(?P<ext>err|out)$')
 
-  # fresh header (only requested columns)
-  print "hash","mode","wlhash","stabilized_at","cpu_time_s","max_mem_kib",
-        "local","isohash","family","result","clauses","variables","bytes",
-        "cls1","cls2","cls3","cls4","cls5","cls6","cls7","cls8","cls9",
-        "cls10p","horn","invhorn","positive","negative" > out
-  next
-}
+# Patterns inside files
+hash_re      = re.compile(r'(?i)\bHash:\s*([0-9a-f]{8,64})')
+stab_re      = re.compile(r'(?i)stabil\w*\D+(\d+)')  # stabilized at 7, stabilization: 7, etc.
+cpu_time_1   = re.compile(r'(?im)^CPU time \(s\):\s*([0-9.]+)\s*$')
+cpu_time_2   = re.compile(r'(?im)^total CPU time \(s\):\s*([0-9.]+)\s*$')
+max_mem_kib  = re.compile(r'(?im)^Max\. memory .*?\(KiB\):\s*([0-9]+)\s*$')
+max_rss_fall = re.compile(r'(?i)maximum resident set size=\s*([0-9]+)\b')
 
-{
-  key = $(RIdx["hash"])
-  if (key in inst_map) {
-    print $(RIdx["hash"]),
-          $(RIdx["mode"]),
-          $(RIdx["wlhash"]),
-          $(RIdx["stabilized_at"]),
-          $(RIdx["cpu_time_s"]),
-          $(RIdx["max_mem_kib"]),
-          inst_map[key] >> out
-  }
-}
-' "$INSTANCES" "$RESULTS"
+def parse_err(path):
+    wlhash = "NA"
+    stab   = "NA"
+    try:
+        with open(path, 'r', errors='ignore') as f:
+            for line in f:
+                if wlhash == "NA":
+                    m = hash_re.search(line)
+                    if m: wlhash = m.group(1).lower()
+                if stab == "NA":
+                    s = stab_re.search(line)
+                    if s: stab = s.group(1)
+                if wlhash != "NA" and stab != "NA":
+                    break
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        sys.stderr.write(f"[warn] err parse failed {path}: {e}\n")
+    return wlhash, stab
 
-echo "Wrote: $OUT"
+def parse_out(path):
+    cpu = "NA"
+    mem = "NA"
+    try:
+        with open(path, 'r', errors='ignore') as f:
+            for line in f:
+                if cpu == "NA":
+                    m = cpu_time_1.search(line) or cpu_time_2.search(line)
+                    if m: cpu = m.group(1)
+                if mem == "NA":
+                    mm = max_mem_kib.search(line)
+                    if mm: mem = mm.group(1)
+                if cpu != "NA" and mem != "NA":
+                    break
+            if mem == "NA":
+                f.seek(0)
+                for line in f:
+                    mm2 = max_rss_fall.search(line)
+                    if mm2:
+                        mem = mm2.group(1)
+                        break
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        sys.stderr.write(f"[warn] out parse failed {path}: {e}\n")
+    return cpu, mem
+
+def write_header(fp):
+    fp.write("id\tmode\tmax_iters\twlhash\tstabilized_at\tcpu_time_s\tmax_mem_kib\n")
+
+processed = set()
+rows = 0
+
+with open(results_path, 'w') as outfp:
+    write_header(outfp)
+
+    # Pass 1: every .err file
+    try:
+        with os.scandir(errdir) as it:
+            for entry in it:
+                if not entry.is_file(): continue
+                name = entry.name
+                m = fname_re.match(name)
+                if not m or m.group('ext') != 'err': continue
+                stem = name[:-4]  # strip .err
+                id_   = m.group('id')
+                mode  = m.group('mode')
+                iters = m.group('iters')
+                err_path = os.path.join(errdir, name)
+                out_path = os.path.join(outdir, stem + ".out")
+
+                wlhash, stab = parse_err(err_path)
+                cpu, mem     = parse_out(out_path)
+
+                outfp.write(f"{id_}\t{mode}\t{iters}\t{wlhash}\t{stab}\t{cpu}\t{mem}\n")
+                rows += 1
+                processed.add(stem)
+                if rows % 1000 == 0:
+                    outfp.flush()
+    except FileNotFoundError:
+        pass
+
+    # Pass 2: .out files without .err counterpart
+    try:
+        with os.scandir(outdir) as it:
+            for entry in it:
+                if not entry.is_file(): continue
+                name = entry.name
+                m = fname_re.match(name)
+                if not m or m.group('ext') != 'out': continue
+                stem = name[:-4]
+                if stem in processed: continue
+
+                id_   = m.group('id')
+                mode  = m.group('mode')
+                iters = m.group('iters')
+                err_path = os.path.join(errdir, stem + ".err")
+                out_path = os.path.join(outdir, name)
+
+                wlhash, stab = parse_err(err_path)
+                cpu, mem     = parse_out(out_path)
+
+                outfp.write(f"{id_}\t{mode}\t{iters}\t{wlhash}\t{stab}\t{cpu}\t{mem}\n")
+                rows += 1
+                if rows % 1000 == 0:
+                    outfp.flush()
+    except FileNotFoundError:
+        pass
+
+print(f"Wrote {rows} rows to: {results_path}")
+PY
+
+echo "Done. Results at: ${RESULTS}"
