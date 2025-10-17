@@ -5,16 +5,18 @@
 #include <algorithm>
 #include "src/util/CNFFormula.h"
 
+using namespace std;
+
 namespace CNF {
 
 class IncidenceHypergraph {
     unsigned vars_ = 0;
     unsigned verts_ = 0;
     unsigned edges_ = 0;
-    std::vector<unsigned> edge_offsets_;
-    std::vector<unsigned> edge_vertices_;
-    std::vector<unsigned> inc_offsets_;
-    std::vector<unsigned> inc_edges_;
+    vector<unsigned> edge_offsets_;
+    vector<unsigned> edge_vertices_;
+    vector<unsigned> inc_offsets_;
+    vector<unsigned> inc_edges_;
 
 public:
     IncidenceHypergraph() = default;
@@ -106,8 +108,8 @@ public:
             return;
         }
 
-        std::vector<unsigned> edge_size(edges_, 0u);
-        std::vector<unsigned> deg(verts_, 0u);
+        vector<unsigned> edge_size(edges_, 0u);
+        vector<unsigned> deg(verts_, 0u);
 
         for (unsigned cid = 0; cid < edges_; ++cid) {
             const Cl* c = f[cid];
@@ -131,9 +133,9 @@ public:
 
         inc_edges_.resize(inc_offsets_[verts_]);
 
-        std::vector<unsigned> cur_edge = edge_offsets_;
-        std::vector<unsigned> cur_inc = inc_offsets_;
-        std::vector<unsigned> lits;
+        vector<unsigned> cur_edge = edge_offsets_;
+        vector<unsigned> cur_inc = inc_offsets_;
+        vector<unsigned> lits;
 
         for (unsigned cid = 0; cid < edges_; ++cid) {
             const Cl* c = f[cid];
@@ -147,7 +149,7 @@ public:
                 lits.push_back(literalIndex(v0, pos));
             }
 
-            std::sort(lits.begin(), lits.end());
+            sort(lits.begin(), lits.end());
 
             for (unsigned li : lits) {
                 edge_vertices_[cur_edge[cid]++] = li;
@@ -156,7 +158,7 @@ public:
         }
 
         for (unsigned v = 0; v < verts_; ++v) {
-            std::sort(&inc_edges_[inc_offsets_[v]], &inc_edges_[inc_offsets_[v + 1]]);
+            sort(&inc_edges_[inc_offsets_[v]], &inc_edges_[inc_offsets_[v + 1]]);
         }
     }
 
