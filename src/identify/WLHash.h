@@ -26,12 +26,12 @@ struct WLResult {
 
 // helper functions
 
-inline void radix_sort(std::vector<uint64_t>& a) {
+inline void radix_sort(vector<uint64_t>& a) {
     const size_t n = a.size();
     if (n <= 1) return;
-    if (n < 64) { std::sort(a.begin(), a.end()); return; }
+    if (n < 64) { sort(a.begin(), a.end()); return; }
 
-    static std::vector<uint64_t> buf;
+    static vector<uint64_t> buf;
     if (buf.size() < n) buf.resize(n);
 
     for (int pass = 0; pass < 8; ++pass) {
@@ -63,11 +63,11 @@ using Color = uint64_t;
 inline uint64_t hash_words(const uint64_t* data, size_t n_words) {
     return XXH3_64bits(static_cast<const void*>(data), n_words * sizeof(uint64_t));
 }
-inline uint64_t hash_words(const std::vector<uint64_t>& v) {
+inline uint64_t hash_words(const vector<uint64_t>& v) {
     return hash_words(v.data(), v.size());
 }
 
-inline void encode(const std::vector<Color>& sorted, std::vector<uint64_t>& pairs) {
+inline void encode(const vector<Color>& sorted, vector<uint64_t>& pairs) {
     pairs.clear();
     if (sorted.empty()) return;
     Color cur = sorted[0];
@@ -113,12 +113,12 @@ inline int get_color_classes(const vector<Color> &colors) {
     return unique.size();
 }
 
-inline void sort_neigh(std::vector<uint64_t> &neigh, const WLSettings& settings) {
+inline void sort_neigh(vector<uint64_t> &neigh, const WLSettings& settings) {
     if (settings.advanced_sort) radix_sort(neigh);
-    else std::sort(neigh.begin(), neigh.end());
+    else sort(neigh.begin(), neigh.end());
 }
 
-inline void append_neigh(std::vector<uint64_t> &neigh, const WLSettings &settings, std::vector<uint64_t> &buf, std::vector<uint64_t> &pairs) {
+inline void append_neigh(vector<uint64_t> &neigh, const WLSettings &settings, vector<uint64_t> &buf, vector<uint64_t> &pairs) {
     if (settings.sum_sort) {
         uint64_t sum = 0, sum2 = 0, x = 0, mn = UINT64_MAX, mx = 0;
         for (uint64_t c : neigh) {
@@ -141,8 +141,8 @@ inline void append_neigh(std::vector<uint64_t> &neigh, const WLSettings &setting
     }
 }
 
-inline void append_twohop_vertex(const CNF::IncidenceHypergraph& g, int v, const std::vector<Color>& old_V, std::vector<uint64_t>& buf) {
-    std::unordered_map<Color, uint64_t> freq;
+inline void append_twohop_vertex(const CNF::IncidenceHypergraph& g, int v, const vector<Color>& old_V, vector<uint64_t>& buf) {
+    unordered_map<Color, uint64_t> freq;
     auto edges = g.clausesOfLiteral(v);
     for (int e_id : edges) {
         auto lits = g.literalsOfClause(e_id);
@@ -154,9 +154,9 @@ inline void append_twohop_vertex(const CNF::IncidenceHypergraph& g, int v, const
         buf.push_back(0); 
         return; 
     }
-    std::vector<std::pair<Color,uint64_t>> tmp; tmp.reserve(freq.size());
+    vector<pair<Color,uint64_t>> tmp; tmp.reserve(freq.size());
     for (auto& kv : freq) tmp.emplace_back(kv.first, kv.second);
-    std::sort(tmp.begin(), tmp.end(), [](auto& a, auto& b){ return a.first < b.first; });
+    sort(tmp.begin(), tmp.end(), [](auto& a, auto& b){ return a.first < b.first; });
     buf.push_back(static_cast<uint64_t>(tmp.size()));
     for (auto& p : tmp) { 
         buf.push_back(p.first); 
@@ -164,8 +164,8 @@ inline void append_twohop_vertex(const CNF::IncidenceHypergraph& g, int v, const
     }
 }
 
-inline void append_twohop_edge(const CNF::IncidenceHypergraph& g, int e, const std::vector<Color>& old_E, std::vector<uint64_t>& buf) {
-    std::unordered_map<Color, uint64_t> freq;
+inline void append_twohop_edge(const CNF::IncidenceHypergraph& g, int e, const vector<Color>& old_E, vector<uint64_t>& buf) {
+    unordered_map<Color, uint64_t> freq;
     auto verts = g.literalsOfClause(e);
     for (int v_id : verts) {
         auto edges2 = g.clausesOfLiteral(v_id);
@@ -177,9 +177,9 @@ inline void append_twohop_edge(const CNF::IncidenceHypergraph& g, int e, const s
         buf.push_back(0); 
         return; 
     }
-    std::vector<std::pair<Color,uint64_t>> tmp; tmp.reserve(freq.size());
+    vector<pair<Color,uint64_t>> tmp; tmp.reserve(freq.size());
     for (auto& kv : freq) tmp.emplace_back(kv.first, kv.second);
-    std::sort(tmp.begin(), tmp.end(), [](auto& a, auto& b){ return a.first < b.first; });
+    sort(tmp.begin(), tmp.end(), [](auto& a, auto& b){ return a.first < b.first; });
     buf.push_back(static_cast<uint64_t>(tmp.size()));
     for (auto& p : tmp) { 
         buf.push_back(p.first); 
@@ -204,8 +204,8 @@ inline void initialize(const CNF::IncidenceHypergraph &graph, vector<Color> &old
 
 // iteration step of assigning new colors
 inline void update_colors(const CNF::IncidenceHypergraph &graph, const WLSettings &settings, vector<Color> &old_V, vector<Color> &old_E, vector<Color> &new_V, vector<Color> &new_E) {
-    std::vector<Color> neigh;
-    std::vector<uint64_t> pairs;
+    vector<Color> neigh;
+    vector<uint64_t> pairs;
     const int num_E = graph.nClauses();
     const int num_V = graph.nVertices();
     vector<vector<uint64_t>> sign_E(num_E), sign_V(num_V);
@@ -282,7 +282,7 @@ inline uint64_t digest(const vector<Color> &new_V, const vector<Color> &new_E) {
 // main function
 WLResult run(const CNF::IncidenceHypergraph &graph, const WLSettings &settings) {
     WLResult out;
-    std::vector<Color> old_V(graph.nVertices()), old_E(graph.nClauses()), new_V(graph.nVertices()), new_E(graph.nClauses());
+    vector<Color> old_V(graph.nVertices()), old_E(graph.nClauses()), new_V(graph.nVertices()), new_E(graph.nClauses());
 
     initialize(graph, old_V, old_E);
 
@@ -295,9 +295,9 @@ WLResult run(const CNF::IncidenceHypergraph &graph, const WLSettings &settings) 
         out.vertex_color_classes = get_color_classes(new_V);
         out.edge_color_classes = get_color_classes(new_E);
         if (settings.print_stats) {
-            std::cerr << "round " << (out.round)
-                      << "  V_classes=" << out.vertex_color_classes
-                      << "  E_classes=" << out.edge_color_classes << "\n";
+            cerr << "round " << (out.round)
+                 << "  V_classes=" << out.vertex_color_classes
+                 << "  E_classes=" << out.edge_color_classes << "\n";
         }
 
         // stabilization
@@ -307,7 +307,7 @@ WLResult run(const CNF::IncidenceHypergraph &graph, const WLSettings &settings) 
         if (same_V && same_E) { 
             out.hash = digest(new_V, new_E);
             out.stabilized=true;
-            std::cerr << "c stabilized: " << out.round << "\n";
+            cerr << "c stabilized: " << out.round << "\n";
             return out;
         }
 
