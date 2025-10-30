@@ -70,9 +70,8 @@ int main(int argc, char** argv) {
     // flags for WL Hash
     argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before stopping");
     argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
-    argparse.add_argument("--neigh-hop").default_value(false).implicit_value(true).help("Add additional information via neighbor hops");
-    argparse.add_argument("--advanced-sort").default_value(false).implicit_value(true).help("Use Radix Sort");
     argparse.add_argument("--sum-sort").default_value(false).implicit_value(true).help("Use a fast Sum Sort");
+    argparse.add_argument("--quick-digest").default_value(false).implicit_value(true).help("Use a faster XOR digest");
 
     // flags for timon hash
     argparse.add_argument("--no-sort").default_value(false).implicit_value(true).help("disable sorting for timon isohash");
@@ -130,9 +129,8 @@ int main(int argc, char** argv) {
                 WLF::WLSettings config;
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
                 config.print_stats = argparse.get<bool>("--print-stats");
-                config.neigh_hop = argparse.get<bool>("--neigh-hop");
-                config.advanced_sort = argparse.get<bool>("--advanced-sort");
                 config.sum_sort = argparse.get<bool>("--sum-sort");
+                config.quick_digest = argparse.get<bool>("--quick-digest");
 
                 std::string output = WLF::wlhash(filename.c_str(), config);
                 std::cerr << "c Hash: " << output << std::endl;
