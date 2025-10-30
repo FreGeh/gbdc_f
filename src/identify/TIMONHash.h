@@ -94,37 +94,14 @@ namespace CNF {
 
         template <typename T> // needs to be flat, no pointers or heap data
         static inline Hash hash(const T t) {
-            if constexpr (!use_prime_ring) {
-                if constexpr (use_xxh3)
-                    return XXH3_64bits(&t, sizeof(t));
+            if constexpr (use_xxh3)
+                return XXH3_64bits(&t, sizeof(t));
 
-                MD5 md5;
-                md5.consume_binary(t);
-                return md5.finish();
-            }
-            constexpr std::uint64_t max = std::numeric_limits<std::uint64_t>::max();
-            std::uint64_t hash = max;
-            const std::uint64_t first_problem = max - (max % ring_size);
-            for (std::uint16_t seed = 0; hash >= first_problem; ++seed) {
-                if (use_xxh3)
-                    hash = XXH3_64bits_withSecret(&t, sizeof(t), &seed, sizeof(seed));
-                else {
-                    MD5 md5;
-                    md5.consume_binary(seed);
-                    md5.consume_binary(t);
-                    hash = md5.finish();
-                }
-            }
-            return hash % ring_size;
+            MD5 md5;
+            md5.consume_binary(t);
+            return md5.finish();
         }
         static inline void combine(Hash* acc, Hash in) {
-            if constexpr (use_prime_ring) {
-                const Hash first_overflow_acc = ring_size - in;
-                if (*acc >= first_overflow_acc) {
-                    *acc -= first_overflow_acc;
-                    return;
-                }
-            }
             *acc += in;
         }
         template <typename T, typename C>
@@ -156,7 +133,9 @@ namespace CNF {
         }
         Hash clause_hash(const Clause cl) {
             if (!cfg.sort_for_clause_hash) {
-                Hash h = hash_sum<const Lit>(cl, [this](const Lit lit) { return old_color()(lit); });
+                Hash h = hash_sum<const Lit>(cl, [this](const Lit lit) { 
+                    return old_color()(lit); 
+                });
                 // hash again to preserve clause structure
                 if (cfg.rehash_clauses) h = hash(h);
                 return h;
