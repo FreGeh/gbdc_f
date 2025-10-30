@@ -43,7 +43,7 @@ CMD_LOG="${RUN_DIR}/cmds.txt"; : > "$CMD_LOG"
 echo "Starting job generation and execution for ${SLURM_JOB_ID}"
 echo "Max-iters set(s): ${MAX_ITER[*]}"
 
-# Generate commands per row and per max-iters value: modes {none, sum-sort}
+# Generate commands per row and per max-iters value: modes {none, sum-sort, quick-digest and both at the end}
 # IMPORTANT: skip header; read TABs; LOCAL=$1, ID=$2
 {
   tail -n +2 "$LIST" | while IFS=$'\t' read -r LOCAL ID _; do
@@ -56,14 +56,28 @@ echo "Max-iters set(s): ${MAX_ITER[*]}"
       OUT="${OUTDIR}/${ID}_none_${suffix}.out"; ERR="${ERRDIR}/${ID}_none_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
         printf 'runsolver -C %d "%s" wlhash --max-iters %d "%s" > "%s" 2> "%s"\n' \
-               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
       # 2) sum-sort
       OUT="${OUTDIR}/${ID}_sum_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
         printf 'runsolver -C %d "%s" wlhash --sum-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
-               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
+
+      # 3) quick-digest
+      OUT="${OUTDIR}/${ID}_quick_${suffix}.out"; ERR="${ERRDIR}/${ID}_quick_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" wlhash --quick-digest --max-iters %d "%s" > "%s" 2> "%s"\n' \
+              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
+
+      # 4) both
+      OUT="${OUTDIR}/${ID}_both_${suffix}.out"; ERR="${ERRDIR}/${ID}_both_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" wlhash --sum-sort --quick-digest --max-iters %d "%s" > "%s" 2> "%s"\n' \
+              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
     done
   done
