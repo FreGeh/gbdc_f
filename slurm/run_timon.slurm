@@ -24,7 +24,7 @@ TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
 TIME_LIMIT=${TIME_LIMIT:-12000}
 
-# simple per-run setting: change these as needed
+# simple per-run setting: fixed to 100
 MAX_ITER=(100)
 
 # NEW: headered TSV with many columns (col1=local, col2=hash/ID)
@@ -43,7 +43,7 @@ CMD_LOG="${RUN_DIR}/cmds.txt"; : > "$CMD_LOG"
 echo "Starting job generation and execution for ${SLURM_JOB_ID}"
 echo "Max-iters set(s): ${MAX_ITER[*]}"
 
-# Generate commands per row and per max-iters value: modes {none, sum-sort}
+# Generate commands per row and per max-iters value: modes {default, no-sort, no-rehash}
 # IMPORTANT: skip header; read TABs; LOCAL=$1, ID=$2
 {
   tail -n +2 "$LIST" | while IFS=$'\t' read -r LOCAL ID _; do
@@ -52,17 +52,24 @@ echo "Max-iters set(s): ${MAX_ITER[*]}"
     for d in "${MAX_ITER[@]}"; do
       suffix="mi${d}"
 
-      # 1) none
-      OUT="${OUTDIR}/${ID}_none_${suffix}.out"; ERR="${ERRDIR}/${ID}_none_${suffix}.err"
+      # 1) default (sorted + rehash)
+      OUT="${OUTDIR}/${ID}_is2_default_${suffix}.out"; ERR="${ERRDIR}/${ID}_is2_default_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" timonhash --max-iters %d "%s" > "%s" 2> "%s"\n' \
                "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      # 2) sum-sort
-      OUT="${OUTDIR}/${ID}_sum_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      # 2) no-sort
+      OUT="${OUTDIR}/${ID}_is2_nosort_${suffix}.out"; ERR="${ERRDIR}/${ID}_is2_nosort_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --sum-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" timonhash --max-iters %d --no-sort "%s" > "%s" 2> "%s"\n' \
+               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
+
+      # 3) no-rehash
+      OUT="${OUTDIR}/${ID}_is2_norehash_${suffix}.out"; ERR="${ERRDIR}/${ID}_is2_norehash_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" timonhash --max-iters %d --no-rehash "%s" > "%s" 2> "%s"\n' \
                "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
     done

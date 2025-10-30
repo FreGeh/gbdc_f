@@ -29,6 +29,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/identify/GBDHash.h"
 #include "src/identify/ISOHash.h"
 #include "src/identify/WLHash.h"
+#include "src/identify/TIMONHash.h"
 
 #include "src/util/CNFFormula.h"
 #include "src/util/SolverTypes.h"
@@ -50,10 +51,10 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 int main(int argc, char** argv) {
     argparse::ArgumentParser argparse("CNF Tools");
 
-    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
+    argparse.add_argument("tool").help("Select Tool: id, isohash, wlhash, timonhash, normalize, sanitize, checksani, cnf2kis, cnf2bip, extract, gates")
         .default_value("identify")
         .action([](const std::string& value) {
-            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
+            static const std::vector<std::string> choices = { "id", "isohash", "wlhash", "timonhash", "normalize", "sanitize", "checksani", "cnf2kis", "cnf2bip", "extract", "gates" };
             if (std::find(choices.begin(), choices.end(), value) != choices.end()) {
                 return value;
             }
@@ -72,6 +73,10 @@ int main(int argc, char** argv) {
     argparse.add_argument("--neigh-hop").default_value(false).implicit_value(true).help("Add additional information via neighbor hops");
     argparse.add_argument("--advanced-sort").default_value(false).implicit_value(true).help("Use Radix Sort");
     argparse.add_argument("--sum-sort").default_value(false).implicit_value(true).help("Use a fast Sum Sort");
+
+    // flags for timon hash
+    argparse.add_argument("--no-sort").default_value(false).implicit_value(true).help("disable sorting for timon isohash");
+    argparse.add_argument("--no-rehash").default_value(false).implicit_value(true).help("disable rehashing for timon isohash");
     
     try {
         argparse.parse_args(argc, argv);
@@ -131,6 +136,19 @@ int main(int argc, char** argv) {
 
                 std::string output = WLF::wlhash(filename.c_str(), config);
                 std::cerr << "c Hash: " << output << std::endl;
+            }
+        }
+        else if (toolname == "timonhash") {
+            if (ext == ".cnf") {
+                unsigned depth = 200;
+                bool sort = true;
+                bool rehash = true;
+                depth = 2 * argparse.get<unsigned>("--max-iters");
+                sort = !argparse.get<bool>("--no-sort");
+                rehash = !argparse.get<bool>("--no-rehash");
+
+                std::cout << "c timonhash: max_iters=" << depth << " sort=" << (sort ? 1 : 0) << " rehash=" << (rehash ? 1 : 0) << std::endl;
+                std::cerr << CNF::weisfeiler_leman_hash(filename.c_str(), 0, true, true, false, depth, true, rehash, true, 6u, false, false, sort) << std::endl;
             }
         }
         else if (toolname == "isohash") {

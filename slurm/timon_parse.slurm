@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # >>> Set your run id here <<<
-RUN_ID="49710"
+RUN_ID="49696"
 
 RUN_DIR="/nfs/home/fgehm/gbdc_f/run/${RUN_ID}"
 OUTDIR="${RUN_DIR}/out"
@@ -37,15 +37,17 @@ errdir   = os.environ['ERRDIR']
 results_path = os.environ['RESULTS']
 
 # <id>_<mode>_mi<iters>.(err|out)
-fname_re = re.compile(r'^(?P<id>[0-9a-fA-F]{8,})_(?P<mode>[A-Za-z0-9\-]+)_mi(?P<iters>\d+)\.(?P<ext>err|out)$')
+# allow underscores in mode (e.g., is2_default)
+fname_re = re.compile(r'^(?P<id>[0-9a-fA-F]{8,})_(?P<mode>[A-Za-z0-9_\-]+)_mi(?P<iters>\d+)\.(?P<ext>err|out)$')
 
 # Patterns inside files
-hash_re      = re.compile(r'(?i)\bHash:\s*([0-9a-f]{8,64})')
-stab_re      = re.compile(r'(?i)stabil\w*\D+(\d+)')  # stabilized at 7, stabilization: 7, etc.
-cpu_time_1   = re.compile(r'(?im)^CPU time \(s\):\s*([0-9.]+)\s*$')
-cpu_time_2   = re.compile(r'(?im)^total CPU time \(s\):\s*([0-9.]+)\s*$')
-max_mem_kib  = re.compile(r'(?im)^Max\. memory .*?\(KiB\):\s*([0-9]+)\s*$')
-max_rss_fall = re.compile(r'(?i)maximum resident set size=\s*([0-9]+)\b')
+hash_re        = re.compile(r'(?i)\bHash:\s*([0-9a-f]{8,64})')         # legacy "Hash: ..." lines
+plain_hash_re  = re.compile(r'^\s*([0-9a-fA-F]{8,}|[0-9]{8,})\s*$')    # bare hash line (e.g., "977670428")
+stab_re        = re.compile(r'(?i)stabil\w*\D+(\d+)')                  # "stabilized" info if present
+cpu_time_1     = re.compile(r'(?im)^CPU time \(s\):\s*([0-9.]+)\s*$')
+cpu_time_2     = re.compile(r'(?im)^total CPU time \(s\):\s*([0-9.]+)\s*$')
+max_mem_kib    = re.compile(r'(?im)^Max\. memory .*?\(KiB\):\s*([0-9]+)\s*$')
+max_rss_fall   = re.compile(r'(?i)maximum resident set size=\s*([0-9]+)\b')
 
 def parse_err(path):
     wlhash = "NA"
@@ -53,12 +55,20 @@ def parse_err(path):
     try:
         with open(path, 'r', errors='ignore') as f:
             for line in f:
+                # hash: prefer explicit "Hash:"; otherwise accept a bare hash line
                 if wlhash == "NA":
                     m = hash_re.search(line)
-                    if m: wlhash = m.group(1).lower()
+                    if m:
+                        wlhash = m.group(1).lower()
+                    else:
+                        pm = plain_hash_re.match(line.strip())
+                        if pm:
+                            wlhash = pm.group(1).lower()
+                # stabilization hint if present
                 if stab == "NA":
                     s = stab_re.search(line)
-                    if s: stab = s.group(1)
+                    if s:
+                        stab = s.group(1)
                 if wlhash != "NA" and stab != "NA":
                     break
     except FileNotFoundError:
@@ -75,10 +85,12 @@ def parse_out(path):
             for line in f:
                 if cpu == "NA":
                     m = cpu_time_1.search(line) or cpu_time_2.search(line)
-                    if m: cpu = m.group(1)
+                    if m:
+                        cpu = m.group(1)
                 if mem == "NA":
                     mm = max_mem_kib.search(line)
-                    if mm: mem = mm.group(1)
+                    if mm:
+                        mem = mm.group(1)
                 if cpu != "NA" and mem != "NA":
                     break
             if mem == "NA":
@@ -107,10 +119,12 @@ with open(results_path, 'w') as outfp:
     try:
         with os.scandir(errdir) as it:
             for entry in it:
-                if not entry.is_file(): continue
+                if not entry.is_file():
+                    continue
                 name = entry.name
                 m = fname_re.match(name)
-                if not m or m.group('ext') != 'err': continue
+                if not m or m.group('ext') != 'err':
+                    continue
                 stem = name[:-4]  # strip .err
                 id_   = m.group('id')
                 mode  = m.group('mode')
@@ -133,12 +147,15 @@ with open(results_path, 'w') as outfp:
     try:
         with os.scandir(outdir) as it:
             for entry in it:
-                if not entry.is_file(): continue
+                if not entry.is_file():
+                    continue
                 name = entry.name
                 m = fname_re.match(name)
-                if not m or m.group('ext') != 'out': continue
+                if not m or m.group('ext') != 'out':
+                    continue
                 stem = name[:-4]
-                if stem in processed: continue
+                if stem in processed:
+                    continue
 
                 id_   = m.group('id')
                 mode  = m.group('mode')

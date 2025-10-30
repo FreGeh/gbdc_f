@@ -25,10 +25,10 @@ PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
 TIME_LIMIT=${TIME_LIMIT:-12000}
 
 # simple per-run setting: change these as needed
-MAX_ITER=(100)
+MAX_ITER=(1 2 3 4 5 6 7 8 9 10 11 12)
 
 # NEW: headered TSV with many columns (col1=local, col2=hash/ID)
-LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_new_1000.lst}
+LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances.lst}
 
 # env / deps
 export PATH="$HOME/local/bin:$PATH"
