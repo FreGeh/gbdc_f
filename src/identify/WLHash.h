@@ -2,7 +2,6 @@
 #define XXH_INLINE_ALL
 #include "src/external/xxhash/xxhash.h"
 #include "src/util/CNFFormula.h"
-#include "src/transform/cnf2hypergraph.h"
 
 using namespace std;
 
@@ -22,6 +21,14 @@ struct WLResult {
     int edge_color_classes = 0;
     bool stabilized = false;
 };
+
+inline unsigned literal_to_vertex_idx(const Lit& lit) {
+    return ((lit.var() - 1) << 1) | (lit.sign() ? 1u : 0u);
+}
+
+inline unsigned mate_of_vertex_idx(unsigned v_idx) {
+    return v_idx ^ 1u;
+}
 
 using Color = uint64_t;
 
@@ -85,71 +92,50 @@ inline void sum_encoding(vector<uint64_t> &neigh, vector<uint64_t> &features) {
 }
 
 
-inline void initialize_colors(const CNF::IncidenceHypergraph &graph, vector<Color> &old_V, vector<Color> &old_E) {
-    // edges
-    for (int e = 0; e < graph.nClauses(); e++) {
-        old_E[e]=graph.clauseSize(e);
-    }
-
-    // vertices
-    for (int v = 0; v < graph.nVertices(); v++) {
-        old_V[v]=graph.degree(v);
-    }
-}
-
 // iteration step of assigning new colors
-inline void update_colors(const CNF::IncidenceHypergraph &graph, const WLSettings &settings, vector<Color> &old_V, vector<Color> &old_E, vector<Color> &new_V, vector<Color> &new_E) {
+inline void update_colors(const CNFFormula &formula, const WLSettings &settings, vector<Color> &old_V, vector<Color> &new_V, vector<Color> &new_E) {
+    const int num_E = formula.nClauses();
+    const int num_V = formula.nVars()*2;
     vector<Color> neigh;
-    const int num_E = graph.nClauses();
-    const int num_V = graph.nVertices();
-    vector<vector<uint64_t>> edge_features(num_E), vertex_features(num_V);
+    vector<uint64_t> clause_features;
+    vector<uint64_t> literal_accumulators(num_V, 0);
 
     // edges (clauses)
     for (int e = 0; e < num_E; e++) {
         neigh.clear();
+        clause_features.clear();
 
-        auto verts = graph.literalsOfClause(e);
-        for (int v_id : verts) {
-            neigh.push_back(old_V[v_id]);
+        for (const Lit &lit : *formula[e]) {
+            neigh.push_back(old_V[literal_to_vertex_idx(lit)]);
         }
-
-        edge_features[e].push_back(old_E[e]);
-        edge_features[e].push_back(neigh.size());
+        clause_features.push_back(formula[e]->size()); 
 
         if (settings.sum_sort) {
-            sum_encoding(neigh, edge_features[e]);
+            sum_encoding(neigh, clause_features);
         } 
         else {
-            standard_encoding(neigh, edge_features[e]);
+            standard_encoding(neigh, clause_features);
+        }
+
+        new_E[e] = hash_words(clause_features);
+
+        for (const Lit& lit : *formula[e]) {
+            literal_accumulators[literal_to_vertex_idx(lit)] += new_E[e];
         }
     }
 
     // vertices (literals)
+    vector<uint64_t> literal_features;
     for (int v = 0; v < num_V; v++) {
-        neigh.clear();
+        literal_features.clear();
+        literal_features.reserve(3);
+        
+        literal_features.push_back(old_V[v]);
+        literal_features.push_back(old_V[mate_of_vertex_idx(v)]);
+        literal_features.push_back(literal_accumulators[v]);
 
-        auto edges = graph.clausesOfLiteral(v);
-        for (auto e_id : edges) {
-            neigh.push_back(old_E[e_id]);
-        }
-
-        vertex_features[v].push_back(old_V[v]);
-        vertex_features[v].push_back(old_V[graph.mateOf(v)]);
-        vertex_features[v].push_back(neigh.size());
-        if (settings.sum_sort) {
-            sum_encoding(neigh, vertex_features[v]);
-        } 
-        else {
-            standard_encoding(neigh, vertex_features[v]);
-        }
+        new_V[v] = hash_words(literal_features);
     }
-
-    new_E.resize(num_E);
-    new_V.resize(num_V);
-
-    //raw
-    for (int e = 0; e < num_E; ++e) new_E[e] = hash_words(edge_features[e]);
-    for (int v = 0; v < num_V; ++v) new_V[v] = hash_words(vertex_features[v]);
 }
 
 // calculating final hash
@@ -202,15 +188,26 @@ inline uint64_t quick_digest(const vector<Color> &new_V, const vector<Color> &ne
 }
 
 // main function
-WLResult run(const CNF::IncidenceHypergraph &graph, const WLSettings &settings) {
+WLResult run(const CNFFormula &formula, const WLSettings &settings) {
     WLResult stats;
-    vector<Color> old_V(graph.nVertices()), old_E(graph.nClauses()), new_V(graph.nVertices()), new_E(graph.nClauses());
+    const size_t num_V = formula.nVars() * 2;
+    const size_t num_E = formula.nClauses();
+    vector<Color> old_V(num_V), new_V(num_V);
+    vector<Color> old_E(num_E, 0), new_E(num_E, 0);
 
-    initialize_colors(graph, old_V, old_E);
+    vector<unsigned> degrees(num_V, 0);
+    for (unsigned e = 0; e < num_E; ++e) {
+        for (const Lit &lit : *formula[e]) {
+            degrees[literal_to_vertex_idx(lit)]++;
+        }
+    }
+
+    for (int e = 0; e < num_E; e++) old_E[e] = formula[e]->size();
+    for (int v = 0; v < num_V; v++) old_V[v] = degrees[v];
 
     while (stats.round < settings.max_iterations && !stats.stabilized) {
         // refinement
-        update_colors(graph, settings, old_V, old_E, new_V, new_E);
+        update_colors(formula, settings, old_V, new_V, new_E);
         stats.round++;
 
         // per iteration stats
@@ -260,9 +257,8 @@ inline string wlhash(const char* filename, WLSettings settings) {
     cerr << "c parsed vars=" << f.nVars() << " clauses=" << f.nClauses() << "\n";
 
     f.normalizeVariableNames();
-    CNF::IncidenceHypergraph g(f);
 
-    WLResult res = run(g, settings);
+    WLResult res = run(f, settings);
     return to_hex64(res.hash);
 }
 
