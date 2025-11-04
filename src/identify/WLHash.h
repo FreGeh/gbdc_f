@@ -10,7 +10,8 @@ namespace WLF {
 struct WLSettings {
     uint64_t max_iterations = 100;
     bool print_stats = false;
-    bool sum_sort = false;
+    bool sum_encoding = false;
+    bool stat_encoding = false;
     bool quick_digest = false;
 };
 
@@ -20,6 +21,11 @@ struct WLResult {
     int vertex_color_classes = 0;
     int edge_color_classes = 0;
     bool stabilized = false;
+};
+
+struct Accumulator {
+    uint64_t sum = 0, sum2 = 0, xor_sum = 0, mn = UINT64_MAX, mx = 0;
+    uint32_t deg = 0;
 };
 
 inline unsigned literal_to_vertex_idx(const Lit& lit) {
@@ -43,6 +49,8 @@ inline bool same_partition(const vector<Color> &old_colors, const vector<Color> 
     if (old_colors.size() != new_colors.size()) return false;
     unordered_map<Color, Color> mapping;
     unordered_set<Color> used_new;
+    mapping.reserve(old_colors.size());
+    used_new.reserve(old_colors.size());
 
     for (int i=0;i<old_colors.size();i++) {
         Color x = old_colors[i];
@@ -74,21 +82,31 @@ inline void standard_encoding(vector<uint64_t> &neigh, vector<uint64_t> &feature
 }
 
 inline void sum_encoding(vector<uint64_t> &neigh, vector<uint64_t> &features) {
-    uint64_t sum = 0, sum2 = 0, xor_sum = 0, mn = UINT64_MAX, mx = 0;
+    uint64_t sum = 0;
+
     for (uint64_t c : neigh) {
         sum += c; 
-        sum2 += c * c; 
-        xor_sum ^= c;
-        if (c < mn) mn = c; 
-        if (c > mx) mx = c;
     }
-    if (neigh.empty()) { mn = 0; mx = 0; }
 
-    features.push_back(sum); 
-    features.push_back(sum2); 
-    features.push_back(xor_sum); 
-    features.push_back(mn); 
-    features.push_back(mx);
+    features.push_back(sum);
+}
+
+inline void stat_encoding(vector<uint64_t> &neigh, vector<uint64_t> &features) {
+    Accumulator stats;
+    for (uint64_t c : neigh) {
+        stats.sum += c; 
+        stats.sum2 += c * c; 
+        stats.xor_sum ^= c;
+        if (c < stats.mn) stats.mn = c; 
+        else if (c > stats.mx) stats.mx = c;
+    }
+    if (neigh.empty()) { stats.mn = 0; stats.mx = 0; }
+
+    features.push_back(stats.sum); 
+    features.push_back(stats.sum2); 
+    features.push_back(stats.xor_sum); 
+    features.push_back(stats.mn); 
+    features.push_back(stats.mx);
 }
 
 
@@ -98,9 +116,13 @@ inline void update_colors(const CNFFormula &formula, const WLSettings &settings,
     const int num_V = formula.nVars()*2;
     vector<Color> neigh;
     vector<uint64_t> clause_features;
-    vector<uint64_t> literal_accumulators(num_V, 0);
+    vector<Accumulator> acc(num_V);
+    vector<vector<uint64_t>> in_clauses;
+    if (!settings.sum_encoding && !settings.stat_encoding) {
+        in_clauses.assign(num_V, {});   // allocate per literal
+    }
 
-    // edges (clauses)
+    // clauses (edges)
     for (int e = 0; e < num_E; e++) {
         neigh.clear();
         clause_features.clear();
@@ -110,9 +132,12 @@ inline void update_colors(const CNFFormula &formula, const WLSettings &settings,
         }
         clause_features.push_back(formula[e]->size()); 
 
-        if (settings.sum_sort) {
-            sum_encoding(neigh, clause_features);
+        if (settings.stat_encoding) {
+            stat_encoding(neigh, clause_features);
         } 
+        else if (settings.sum_encoding) {
+            sum_encoding(neigh, clause_features);
+        }
         else {
             standard_encoding(neigh, clause_features);
         }
@@ -120,21 +145,67 @@ inline void update_colors(const CNFFormula &formula, const WLSettings &settings,
         new_E[e] = hash_words(clause_features);
 
         for (const Lit& lit : *formula[e]) {
-            literal_accumulators[literal_to_vertex_idx(lit)] += new_E[e];
+            unsigned v = literal_to_vertex_idx(lit);
+
+            if (settings.stat_encoding) {
+                acc[v].deg += 1;
+                acc[v].sum  += new_E[e];
+                acc[v].sum2 += new_E[e] * new_E[e];
+                acc[v].xor_sum ^= new_E[e];
+                if (new_E[e] < acc[v].mn) acc[v].mn = new_E[e];
+                if (new_E[e] > acc[v].mx) acc[v].mx = new_E[e];
+            } 
+            else if (settings.sum_encoding) {
+                acc[v].deg += 1;
+                acc[v].sum += new_E[e];
+            }
+            else {
+                in_clauses[v].push_back(new_E[e]);
+            }
         }
     }
 
-    // vertices (literals)
+    // literals (vertices)
     vector<uint64_t> literal_features;
     for (int v = 0; v < num_V; v++) {
-        literal_features.clear();
-        literal_features.reserve(3);
-        
-        literal_features.push_back(old_V[v]);
-        literal_features.push_back(old_V[mate_of_vertex_idx(v)]);
-        literal_features.push_back(literal_accumulators[v]);
+        const uint64_t self  = old_V[v];
+        const uint64_t mate  = old_V[mate_of_vertex_idx(v)];
 
-        new_V[v] = hash_words(literal_features);
+        if (settings.stat_encoding) {
+            const auto &A = acc[v];
+            uint64_t feat[2 + 6];
+            int k = 0;
+
+            feat[k++] = self;
+            feat[k++] = mate;
+            feat[k++] = A.deg;
+            feat[k++] = A.sum;
+            feat[k++] = A.sum2;
+            feat[k++] = A.xor_sum;
+            feat[k++] = (A.mn == UINT64_MAX ? 0 : A.mn);
+            feat[k++] = A.mx;
+
+            new_V[v] = hash_words(feat, k);
+        }
+        else if (settings.sum_encoding) {
+            const auto &A = acc[v];
+            uint64_t feat[2 + 2];
+
+            feat[0] = self;
+            feat[1] = mate;
+            feat[2] = A.deg;
+            feat[3] = A.sum;
+
+            new_V[v] = hash_words(feat, 4);
+        }
+        else {
+            auto &lits = in_clauses[v];
+            sort(lits.begin(), lits.end());
+
+            literal_features.insert(literal_features.end(), lits.begin(), lits.end());
+
+            new_V[v] = hash_words(literal_features);
+        }
     }
 }
 

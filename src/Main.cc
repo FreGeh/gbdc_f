@@ -38,7 +38,6 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "src/transform/cnf2bip.h"
 #include "src/transform/cnf2kis.h"
 #include "src/transform/cnf2cnf.h"
-#include "src/transform/cnf2hypergraph.h"
 
 #include "src/extract/CNFSaniCheck.h"
 #include "src/extract/CNFBaseFeatures.h"
@@ -70,7 +69,8 @@ int main(int argc, char** argv) {
     // flags for WL Hash
     argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before stopping");
     argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
-    argparse.add_argument("--sum-sort").default_value(false).implicit_value(true).help("Use a fast Sum Sort");
+    argparse.add_argument("--sum-encoding").default_value(false).implicit_value(true).help("Use a fast Sum encoding");
+    argparse.add_argument("--stat-encoding").default_value(false).implicit_value(true).help("Use a slightly more advanced Sum encoding with more invariants");
     argparse.add_argument("--quick-digest").default_value(false).implicit_value(true).help("Use a faster XOR digest");
 
     // flags for timon hash
@@ -129,7 +129,8 @@ int main(int argc, char** argv) {
                 WLF::WLSettings config;
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
                 config.print_stats = argparse.get<bool>("--print-stats");
-                config.sum_sort = argparse.get<bool>("--sum-sort");
+                config.sum_encoding = argparse.get<bool>("--sum-encoding");
+                config.stat_encoding = argparse.get<bool>("--stat-encoding");
                 config.quick_digest = argparse.get<bool>("--quick-digest");
 
                 std::string output = WLF::wlhash(filename.c_str(), config);
