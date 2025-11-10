@@ -285,7 +285,7 @@ namespace CNF {
         const unsigned progress_check_iteration = 6,
         const bool shrink_to_fit = false,
         const bool return_measurements = false,
-        const bool sort_for_clause_hash = true
+        const bool sort_for_clause_hash = false
     ) {
         constexpr std::string (*generic_functions[24])(const char* filename, const WLHRuntimeConfig cfg) = {
             weisfeiler_leman_hash_generic<NaiveCNFFormula  , false, false, false>,

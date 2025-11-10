@@ -70,8 +70,11 @@ int main(int argc, char** argv) {
     argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before stopping");
     argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
     argparse.add_argument("--sum-encoding").default_value(false).implicit_value(true).help("Use a fast Sum encoding");
+    argparse.add_argument("--fast-sum-encoding").default_value(false).implicit_value(true).help("Use an even faster Sum encoding");
     argparse.add_argument("--stat-encoding").default_value(false).implicit_value(true).help("Use a slightly more advanced Sum encoding with more invariants");
-    argparse.add_argument("--quick-digest").default_value(false).implicit_value(true).help("Use a faster XOR digest");
+    argparse.add_argument("--quick-digest").default_value(false).implicit_value(true).help("Use a fast XOR digest");
+    argparse.add_argument("--super-quick-digest").default_value(false).implicit_value(true).help("Use a super fast XOR digest");
+    argparse.add_argument("--simple-stab").default_value(false).implicit_value(true).help("Use a simpler stab check");
 
     // flags for timon hash
     argparse.add_argument("--no-sort").default_value(false).implicit_value(true).help("disable sorting for timon isohash");
@@ -130,8 +133,11 @@ int main(int argc, char** argv) {
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
                 config.print_stats = argparse.get<bool>("--print-stats");
                 config.sum_encoding = argparse.get<bool>("--sum-encoding");
+                config.fast_sum_encoding = argparse.get<bool>("--fast-sum-encoding");
                 config.stat_encoding = argparse.get<bool>("--stat-encoding");
                 config.quick_digest = argparse.get<bool>("--quick-digest");
+                config.super_quick_digest = argparse.get<bool>("--super-quick-digest");
+                config.simple_stab_check = argparse.get<bool>("--simple-stab");
 
                 std::string output = WLF::wlhash(filename.c_str(), config);
                 std::cerr << "c Hash: " << output << std::endl;
@@ -140,8 +146,8 @@ int main(int argc, char** argv) {
         else if (toolname == "timonhash") {
             if (ext == ".cnf") {
                 unsigned depth = 200;
-                bool sort = true;
-                bool rehash = true;
+                bool sort = false;
+                bool rehash = false;
                 depth = 2 * argparse.get<unsigned>("--max-iters");
                 sort = !argparse.get<bool>("--no-sort");
                 rehash = !argparse.get<bool>("--no-rehash");

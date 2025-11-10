@@ -52,31 +52,24 @@ echo "Max-iters set(s): ${MAX_ITER[*]}"
     for d in "${MAX_ITER[@]}"; do
       suffix="mi${d}"
 
-      # 1) none
-      OUT="${OUTDIR}/${ID}_none_${suffix}.out"; ERR="${ERRDIR}/${ID}_none_${suffix}.err"
+      # 1) timon
+      OUT="${OUTDIR}/${ID}_none_${suffix}.out"; ERR="${ERRDIR}/${ID}_timon_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" timonhash --max-iters %d --no-sort "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      # 2) sum-sort
-      OUT="${OUTDIR}/${ID}_sum_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      # 3) only fast sum encoding
+      OUT="${OUTDIR}/${ID}_quick_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --sum-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" wlhash --fast-sum-encoding --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      # 3) quick-digest
-      OUT="${OUTDIR}/${ID}_quick_${suffix}.out"; ERR="${ERRDIR}/${ID}_quick_${suffix}.err"
+      # 4) also other stuff
+      OUT="${OUTDIR}/${ID}_both_${suffix}.out"; ERR="${ERRDIR}/${ID}_all_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --quick-digest --max-iters %d "%s" > "%s" 2> "%s"\n' \
-              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
-      fi
-
-      # 4) both
-      OUT="${OUTDIR}/${ID}_both_${suffix}.out"; ERR="${ERRDIR}/${ID}_both_${suffix}.err"
-      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --sum-sort --quick-digest --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" wlhash --fast-sum-encoding --super-quick-digest --simple-stab --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
     done
