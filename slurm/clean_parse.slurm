@@ -146,7 +146,7 @@ try:
                 if rows % 1000 == 0:
                     outfp.flush()
 
-            processed.add(f"{id_}_mi{iters}")
+            processed.add(f"{id_}_{out_mode}_mi{iters}")
 except FileNotFoundError:
     pass
 
@@ -162,7 +162,7 @@ try:
             id_   = m.group('id')
             mode_out = m.group('mode')
             iters = m.group('iters')
-            key = f"{id_}_mi{iters}"
+            key = f"{id_}_{mode_out}_mi{iters}"
             if key in processed:
                 continue
 
