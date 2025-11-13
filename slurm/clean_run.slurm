@@ -24,10 +24,8 @@ TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
 TIME_LIMIT=${TIME_LIMIT:-12000}
 
-# simple per-run setting: change these as needed
 MAX_ITER=(100)
 
-# NEW: headered TSV with many columns (col1=local, col2=hash/ID)
 LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_new_1000.lst}
 
 # env / deps
@@ -43,8 +41,6 @@ CMD_LOG="${RUN_DIR}/cmds.txt"; : > "$CMD_LOG"
 echo "Starting job generation and execution for ${SLURM_JOB_ID}"
 echo "Max-iters set(s): ${MAX_ITER[*]}"
 
-# Generate commands per row and per max-iters value: modes {none, sum-sort, quick-digest and both at the end}
-# IMPORTANT: skip header; read TABs; LOCAL=$1, ID=$2
 {
   tail -n +2 "$LIST" | while IFS=$'\t' read -r LOCAL ID _; do
     [[ -z "${LOCAL:-}" || -z "${ID:-}" ]] && continue
@@ -53,23 +49,27 @@ echo "Max-iters set(s): ${MAX_ITER[*]}"
       suffix="mi${d}"
 
       # 1) timon
-      OUT="${OUTDIR}/${ID}_none_${suffix}.out"; ERR="${ERRDIR}/${ID}_timon_${suffix}.err"
+      OUT="${OUTDIR}/${ID}_timon_${suffix}.out"; ERR="${ERRDIR}/${ID}_timon_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
         printf 'runsolver -C %d "%s" timonhash --max-iters %d --no-sort "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      # 3) only fast sum encoding
-      OUT="${OUTDIR}/${ID}_quick_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      OUT="${OUTDIR}/${ID}_xor_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --fast-sum-encoding --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" wlhash --use-xor --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      # 4) also other stuff
-      OUT="${OUTDIR}/${ID}_both_${suffix}.out"; ERR="${ERRDIR}/${ID}_all_${suffix}.err"
+      OUT="${OUTDIR}/${ID}_sort_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --fast-sum-encoding --super-quick-digest --simple-stab --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" wlhash --use-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
+              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
+
+      OUT="${OUTDIR}/${ID}_half_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" wlhash --half-bit --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
     done

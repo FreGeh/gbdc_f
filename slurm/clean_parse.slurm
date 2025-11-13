@@ -37,7 +37,7 @@ errdir   = os.environ['ERRDIR']
 results_path = os.environ['RESULTS']
 
 # ---------- configurable mode mapping (edit if your naming changes) ----------
-OUT2ERR = {'none':'timon', 'quick':'sum', 'both':'all'}
+OUT2ERR = {'timon':'timon', 'xor':'xor', 'sort':'sort', 'half':'half'}
 ERR2OUT = {v:k for k,v in OUT2ERR.items()}
 # -----------------------------------------------------------------------------
 
