@@ -55,19 +55,19 @@ echo "Max-iters set(s): ${MAX_ITER[*]}"
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      OUT="${OUTDIR}/${ID}_xor_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      OUT="${OUTDIR}/${ID}_xor_${suffix}.out"; ERR="${ERRDIR}/${ID}_xor_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
         printf 'runsolver -C %d "%s" wlhash --use-xor --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      OUT="${OUTDIR}/${ID}_sort_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      OUT="${OUTDIR}/${ID}_sort_${suffix}.out"; ERR="${ERRDIR}/${ID}_sort_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
         printf 'runsolver -C %d "%s" wlhash --use-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
-      OUT="${OUTDIR}/${ID}_half_${suffix}.out"; ERR="${ERRDIR}/${ID}_sum_${suffix}.err"
+      OUT="${OUTDIR}/${ID}_half_${suffix}.out"; ERR="${ERRDIR}/${ID}_half_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
         printf 'runsolver -C %d "%s" wlhash --half-bit --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
