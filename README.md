@@ -27,7 +27,7 @@ also `./scranfilize -r -f 0 -s 0 source_instances/source_cnf.xz scrambled_instan
 `./gbdc timonhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --print-stats`
 
 ## testing
-`perf record -F 999 --call-graph dwarf -g -- ./gbdc wlhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --stat-encoding`
+`perf record -F 999 --call-graph dwarf -g -- ./gbdc wlhash ../test/resources/test_files/0a4ed112f2cdc0a524976a15d1821097-cliquecoloring_n12_k9_c8.cnf.xz --half-bit`
 
 ## Server Useage
 Ausgangslage: Datei mit jeweils [GBDHash] [datei] space seperated in instances.lst
