@@ -21,7 +21,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <array>
 #include <cstdio>
 #include <filesystem>
-
+#include <iomanip>
 
 #include "src/external/argparse/argparse.h"
 #include "src/external/ipasir.h"
@@ -47,6 +47,67 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 #include "src/util/StreamCompressor.h"
 
+template <bool one_pass, bool use_xor, bool use_sort, bool mate_ref, bool half_bit_hash>
+void run_wlhash(const std::string& filename, const WLF::WLSettings& settings) {
+    CNFFormula cnf(filename.c_str());
+    WLF::WLHasher<one_pass, use_xor, use_sort, mate_ref, half_bit_hash> hasher(cnf, settings);
+    
+    auto stats = hasher.run();
+
+    std::cerr << "c Hash: " << std::hex << std::setw(half_bit_hash ? 8 : 16) << std::setfill('0') 
+            << stats.hash 
+            << std::dec << std::setfill(' ') << std::endl;
+    if (settings.print_stats) {
+        std::cerr << "c Stabilized: " << (stats.stabilized ? "yes" : "no") << std::endl;
+        std::cerr << "c Rounds: " << stats.round << std::endl;
+    }
+}
+
+using WLHashFuncPtr = void (*)(const std::string&, const WLF::WLSettings&);
+
+// [one_pass | use_xor | use_sort | mate_ref | 32bit_hash]
+constexpr WLHashFuncPtr g_dispatch_table[32] = {
+    &run_wlhash<0,0,0,0,0>, // 00000 | Index 0
+    &run_wlhash<0,0,0,0,1>, // 00001 | Index 1
+    &run_wlhash<0,0,0,1,0>, // 00010 | Index 2
+    &run_wlhash<0,0,0,1,1>, // 00011 | Index 3
+
+    &run_wlhash<0,0,1,0,0>, // 00100 | Index 4
+    &run_wlhash<0,0,1,0,1>, // 00101 | Index 5
+    &run_wlhash<0,0,1,1,0>, // 00110 | Index 6
+    &run_wlhash<0,0,1,1,1>, // 00111 | Index 7
+
+    &run_wlhash<0,1,0,0,0>, // 01000 | Index 8
+    &run_wlhash<0,1,0,0,1>, // 01001 | Index 9
+    &run_wlhash<0,1,0,1,0>, // 01010 | Index 10
+    &run_wlhash<0,1,0,1,1>, // 01011 | Index 11
+
+    &run_wlhash<0,1,1,0,0>, // 01100 | Index 12
+    &run_wlhash<0,1,1,0,1>, // 01101 | Index 13
+    &run_wlhash<0,1,1,1,0>, // 01110 | Index 14
+    &run_wlhash<0,1,1,1,1>, // 01111 | Index 15
+
+    &run_wlhash<1,0,0,0,0>, // 10000 | Index 16
+    &run_wlhash<1,0,0,0,1>, // 10001 | Index 17
+    &run_wlhash<1,0,0,1,0>, // 10010 | Index 18
+    &run_wlhash<1,0,0,1,1>, // 10011 | Index 19
+
+    &run_wlhash<1,0,1,0,0>, // 10100 | Index 20
+    &run_wlhash<1,0,1,0,1>, // 10101 | Index 21
+    &run_wlhash<1,0,1,1,0>, // 10110 | Index 22
+    &run_wlhash<1,0,1,1,1>, // 10111 | Index 23
+
+    &run_wlhash<1,1,0,0,0>, // 11000 | Index 24
+    &run_wlhash<1,1,0,0,1>, // 11001 | Index 25
+    &run_wlhash<1,1,0,1,0>, // 11010 | Index 26
+    &run_wlhash<1,1,0,1,1>, // 11011 | Index 27
+
+    &run_wlhash<1,1,1,0,0>, // 11100 | Index 28
+    &run_wlhash<1,1,1,0,1>, // 11101 | Index 29
+    &run_wlhash<1,1,1,1,0>, // 11110 | Index 30
+    &run_wlhash<1,1,1,1,1>, // 11111 | Index 31
+};
+
 int main(int argc, char** argv) {
     argparse::ArgumentParser argparse("CNF Tools");
 
@@ -69,13 +130,12 @@ int main(int argc, char** argv) {
     // flags for WL Hash
     argparse.add_argument("--max-iters").default_value(100u).scan<'i', unsigned>().help("Maximum WL iterations before stopping");
     argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print useful stats");
-    argparse.add_argument("--sum-encoding").default_value(false).implicit_value(true).help("Use a fast Sum encoding");
-    argparse.add_argument("--fast-sum-encoding").default_value(false).implicit_value(true).help("Use an even faster Sum encoding");
-    argparse.add_argument("--stat-encoding").default_value(false).implicit_value(true).help("Use a slightly more advanced Sum encoding with more invariants");
-    argparse.add_argument("--quick-digest").default_value(false).implicit_value(true).help("Use a fast XOR digest");
-    argparse.add_argument("--super-quick-digest").default_value(false).implicit_value(true).help("Use a super fast XOR digest");
-    argparse.add_argument("--simple-stab").default_value(false).implicit_value(true).help("Use a simpler stab check");
-
+    argparse.add_argument("--one-pass").default_value(false).implicit_value(true).help("Use only one pass");
+    argparse.add_argument("--use-xor").default_value(false).implicit_value(true).help("use xor instead of normal sums");
+    argparse.add_argument("--use-sort").default_value(false).implicit_value(true).help("sort instead of adding or xoring");
+    argparse.add_argument("--mate-ref").default_value(false).implicit_value(true).help("always build a reference hash of a literals other polarity hash");
+    argparse.add_argument("--half-bit").default_value(false).implicit_value(true).help("use only 32 bit");
+    
     // flags for timon hash
     argparse.add_argument("--no-sort").default_value(false).implicit_value(true).help("disable sorting for timon isohash");
     argparse.add_argument("--no-rehash").default_value(false).implicit_value(true).help("disable rehashing for timon isohash");
@@ -132,15 +192,17 @@ int main(int argc, char** argv) {
                 WLF::WLSettings config;
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
                 config.print_stats = argparse.get<bool>("--print-stats");
-                config.sum_encoding = argparse.get<bool>("--sum-encoding");
-                config.fast_sum_encoding = argparse.get<bool>("--fast-sum-encoding");
-                config.stat_encoding = argparse.get<bool>("--stat-encoding");
-                config.quick_digest = argparse.get<bool>("--quick-digest");
-                config.super_quick_digest = argparse.get<bool>("--super-quick-digest");
-                config.simple_stab_check = argparse.get<bool>("--simple-stab");
+                size_t index = 0;
+                index |= (1 << 4); // one_pass default true
+                index |= (1 << 1); // mate_ref default true
 
-                std::string output = WLF::wlhash(filename.c_str(), config);
-                std::cerr << "c Hash: " << output << std::endl;
+                if (argparse.get<bool>("--one-pass"))   index ^= (1 << 4); // turns it false
+                if (argparse.get<bool>("--use-xor"))    index ^= (1 << 3);
+                if (argparse.get<bool>("--use-sort"))   index ^= (1 << 2);
+                if (argparse.get<bool>("--mate-ref"))   index ^= (1 << 1); // turns it false
+                if (argparse.get<bool>("--half-bit"))   index ^= (1 << 0);
+                
+                g_dispatch_table[index](filename, config);
             }
         }
         else if (toolname == "timonhash") {
