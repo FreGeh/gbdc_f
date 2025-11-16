@@ -24,9 +24,9 @@ TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
 TIME_LIMIT=${TIME_LIMIT:-12000}
 
-MAX_ITER=(100)
+MAX_ITER=(1 2 3 4 6 8 10)
 
-LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_new_1000.lst}
+LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_new.lst}
 
 # env / deps
 export PATH="$HOME/local/bin:$PATH"

@@ -1,0 +1,17 @@
+UNIQUE: 3925
+NA:     0
+SAME:   71
+
+AVG stabilization point (overall): nan
+AVG cpu_time_s (overall): 39.748
+MEDIAN cpu_time_s (overall): 2.751
+AVG max_mem_kib (overall): 132277.8
+MEDIAN max_mem_kib (overall): 0.0
+
+BY mode:
+       TOTAL  NA  UNIQUE  SAME  AVG_CPU_S  MED_CPU_S    AVG_MEM_KiB  MED_MEM_KiB  AVG_STAB
+mode                                                                                      
+timon    999   0     996     3  33.413344    2.72088  133241.685686          0.0       NaN
+xor      999   0     937    62  28.946166    2.45267  131992.732733          0.0       NaN
+sort     999   0     996     3  54.964326    4.24707  134759.875876      22156.0       NaN
+half     999   0     996     3  41.667803    2.31094  129116.708709          0.0       NaN

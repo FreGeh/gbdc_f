@@ -7,6 +7,9 @@
 #include <type_traits>
 #include <iostream>
 #include <unordered_set>
+#include <bit>
+#include <bitset>
+#include <cstdint>
 
 #define XXH_INLINE_ALL
 #include "src/external/xxhash/xxhash.h"
@@ -56,7 +59,12 @@ private:
     };
 
     struct Add { inline void operator()(Hash& h, Hash v) const { h += v; } };
-    struct Xor  { inline void operator()(Hash& h, Hash v) const { h ^= v; } };
+    struct Xor  { inline void operator()(Hash& h, Hash v) const { // goldenratio my bff
+        if constexpr (half_bit_hash) {
+            h += v * 0x9e3779b9;
+        } else {
+            h += v * 0x9e3779b97f4a7c15; 
+        } } };
     using Combiner = std::conditional_t<use_xor, Xor, Add>;
 
     const WLSettings& settings;
