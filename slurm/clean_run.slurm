@@ -22,9 +22,9 @@ mkdir -p "$OUTDIR" "$ERRDIR"
 # exec vars
 TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
-TIME_LIMIT=${TIME_LIMIT:-12000}
+TIME_LIMIT=${TIME_LIMIT:-6000}
 
-MAX_ITER=(1 2 3 4 6 8 10)
+MAX_ITER=(1 2 4 6 8)
 
 LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_new.lst}
 
