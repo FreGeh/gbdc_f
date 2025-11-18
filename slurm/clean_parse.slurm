@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # >>> Set your run id here <<<
-RUN_ID="50412"
+RUN_ID="50425"
 
 RUN_DIR="/nfs/home/fgehm/gbdc_f/run/${RUN_ID}"
 OUTDIR="${RUN_DIR}/out"

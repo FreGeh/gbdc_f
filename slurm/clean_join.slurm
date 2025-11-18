@@ -2,7 +2,7 @@
 #SBATCH --job-name=join
 #SBATCH --nodelist=iverson
 #SBATCH --exclusive
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=80
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=0
 #SBATCH --time=58:00:00
@@ -13,11 +13,11 @@
 set -euo pipefail
 
 # >>> Set your run id here <<<
-RUN_ID="49379"
+RUN_ID="50412"
 
 RUN_DIR="/nfs/home/fgehm/gbdc_f/run/${RUN_ID}"
 RESULTS="${RUN_DIR}/results.tsv"
-INSTANCES="/nfs/home/fgehm/gbdc_f/instances_upd.lst"
+INSTANCES="/nfs/home/fgehm/gbdc_f/instances_new.lst"
 OUT="${RUN_DIR}/results_upd.tsv"
 
 # Resolve absolute paths
