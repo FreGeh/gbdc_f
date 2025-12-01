@@ -59,7 +59,8 @@ private:
     };
 
     struct Add { inline void operator()(Hash& h, Hash v) const { h += v; } };
-    struct Xor  { inline void operator()(Hash& h, Hash v) const { // goldenratio my bff
+    struct Xor  { inline void operator()(Hash& h, Hash v) const { 
+        // goldenratio usage: https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
         if constexpr (half_bit_hash) {
             h += v * 0x9e3779b9;
         } else {
@@ -201,9 +202,7 @@ public:
             
             if (check_stabilization()) {
                 stats.stabilized = true;
-                if (settings.print_stats) {
-                    std::cerr << "c Stabilized after " << stats.round << " rounds." << std::endl;
-                }
+                std::cerr << "c Stabilized after " << stats.round << " rounds." << std::endl;
                 break;
             }
         }

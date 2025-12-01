@@ -1,11 +1,11 @@
 #!/bin/bash -l
 #SBATCH --job-name=gbdc_wlhash_run
-#SBATCH --nodelist=hoare
+#SBATCH --nodelist=liskov
 #SBATCH --exclusive
-#SBATCH --cpus-per-task=80
+#SBATCH --cpus-per-task=128
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=0
-#SBATCH --time=58:00:00
+#SBATCH --time=80:00:00
 #SBATCH --chdir=/nfs/home/fgehm/gbdc_f/build
 #SBATCH --output=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.out
 #SBATCH --error=/nfs/home/fgehm/gbdc_f/logs/slurm-%j.err
@@ -24,7 +24,7 @@ TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
 TIME_LIMIT=${TIME_LIMIT:-6000}
 
-MAX_ITER=(1 2 4 6 8)
+MAX_ITER=(1 2 4 6 8 10 200)
 
 LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_new.lst}
 
@@ -48,28 +48,38 @@ echo "Max-iters set(s): ${MAX_ITER[*]}"
     for d in "${MAX_ITER[@]}"; do
       suffix="mi${d}"
 
-      # 1) timon
-      OUT="${OUTDIR}/${ID}_timon_${suffix}.out"; ERR="${ERRDIR}/${ID}_timon_${suffix}.err"
+      # timon no sort but rehash clause
+      OUT="${OUTDIR}/${ID}_timon_rehash_${suffix}.out"; ERR="${ERRDIR}/${ID}_timon_rehash_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
         printf 'runsolver -C %d "%s" timonhash --max-iters %d --no-sort "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
+      # mate ref, use sum, two pass
+      OUT="${OUTDIR}/${ID}_twopass_${suffix}.out"; ERR="${ERRDIR}/${ID}_twopass_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" wlhash --mate-ref --max-iters %d "%s" > "%s" 2> "%s"\n' \
+              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
+
+      # default: mate ref, use sum, one pass
+      OUT="${OUTDIR}/${ID}_onepass_${suffix}.out"; ERR="${ERRDIR}/${ID}_onepass_${suffix}.err"
+      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+        printf 'runsolver -C %d "%s" wlhash --mate-ref --one-pass --max-iters %d "%s" > "%s" 2> "%s"\n' \
+              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
+      fi
+
+      # wlhash xor - default
       OUT="${OUTDIR}/${ID}_xor_${suffix}.out"; ERR="${ERRDIR}/${ID}_xor_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --use-xor --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" wlhash --mate-ref --one-pass --use-xor --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
 
+      # wlhash sort - default
       OUT="${OUTDIR}/${ID}_sort_${suffix}.out"; ERR="${ERRDIR}/${ID}_sort_${suffix}.err"
       if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --use-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
-              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
-      fi
-
-      OUT="${OUTDIR}/${ID}_half_${suffix}.out"; ERR="${ERRDIR}/${ID}_half_${suffix}.err"
-      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --half-bit --max-iters %d "%s" > "%s" 2> "%s"\n' \
+        printf 'runsolver -C %d "%s" wlhash --mate-ref --one-pass --use-sort --max-iters %d "%s" > "%s" 2> "%s"\n' \
               "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
       fi
     done

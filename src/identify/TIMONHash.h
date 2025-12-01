@@ -191,8 +191,10 @@ namespace CNF {
         }
         Hash run() {
             while (iteration < cfg.depth / 2) {
-                if (const auto result = check_progress())
+                if (const auto result = check_progress()) {
+                    std::cerr<<"stabilized after "<<iteration<<" iterations"<<std::endl;
                     return *result;
+                }
                 iteration_step();
             }
             return cfg.depth % 2 == 0 ? variable_hash() : cnf_hash();

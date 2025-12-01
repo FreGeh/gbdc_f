@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # >>> Set your run id here <<<
-RUN_ID="50425"
+RUN_ID="50483"
 
 RUN_DIR="/nfs/home/fgehm/gbdc_f/run/${RUN_ID}"
 OUTDIR="${RUN_DIR}/out"
@@ -37,7 +37,7 @@ errdir   = os.environ['ERRDIR']
 results_path = os.environ['RESULTS']
 
 # ---------- configurable mode mapping (edit if your naming changes) ----------
-OUT2ERR = {'timon':'timon', 'xor':'xor', 'sort':'sort', 'half':'half'}
+OUT2ERR = {'timon_rehash':'timon_rehash', 'onepass':'onepass', 'twopass':'twopass', 'xor':'xor', 'sort':'sort', 'half':'half'}
 ERR2OUT = {v:k for k,v in OUT2ERR.items()}
 # -----------------------------------------------------------------------------
 

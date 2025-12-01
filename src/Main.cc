@@ -193,13 +193,13 @@ int main(int argc, char** argv) {
                 config.max_iterations = argparse.get<unsigned>("--max-iters");
                 config.print_stats = argparse.get<bool>("--print-stats");
                 size_t index = 0;
-                index |= (1 << 4); // one_pass default true
-                index |= (1 << 1); // mate_ref default true
+                //index |= (1 << 4); // one_pass default true
+                //index |= (1 << 1); // mate_ref default true
 
-                if (argparse.get<bool>("--one-pass"))   index ^= (1 << 4); // turns it false
+                if (argparse.get<bool>("--one-pass"))   index ^= (1 << 4);
                 if (argparse.get<bool>("--use-xor"))    index ^= (1 << 3);
                 if (argparse.get<bool>("--use-sort"))   index ^= (1 << 2);
-                if (argparse.get<bool>("--mate-ref"))   index ^= (1 << 1); // turns it false
+                if (argparse.get<bool>("--mate-ref"))   index ^= (1 << 1);
                 if (argparse.get<bool>("--half-bit"))   index ^= (1 << 0);
                 
                 g_dispatch_table[index](filename, config);
