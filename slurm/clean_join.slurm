@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # >>> Set your run id here <<<
-RUN_ID="50412"
+RUN_ID="50758"
 
 RUN_DIR="/nfs/home/fgehm/gbdc_f/run/${RUN_ID}"
 RESULTS="${RUN_DIR}/results.tsv"

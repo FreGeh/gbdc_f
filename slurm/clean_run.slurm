@@ -24,7 +24,7 @@ TOTAL_CPUS=${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-$(nproc)}}
 PARALLEL_JOBS=${PARALLEL_JOBS:-$TOTAL_CPUS}
 TIME_LIMIT=${TIME_LIMIT:-6000}
 
-MAX_ITER=(1 2 4 6 8 10 200)
+MAX_ITER=(1 2 3 4 5 6 7 8 9 10)
 
 LIST=${LIST:-/nfs/home/fgehm/gbdc_f/instances_new.lst}
 
@@ -45,22 +45,15 @@ echo "Max-iters set(s): ${MAX_ITER[*]}"
   tail -n +2 "$LIST" | while IFS=$'\t' read -r LOCAL ID _; do
     [[ -z "${LOCAL:-}" || -z "${ID:-}" ]] && continue
 
+    # isohash
+    OUT="${OUTDIR}/${ID}_isohash.out"; ERR="${ERRDIR}/${ID}_isohash.err"
+    if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
+      printf 'runsolver -C %d "%s" isohash "%s" > "%s" 2> "%s"\n' \
+            "$TIME_LIMIT" "$BIN" "$LOCAL" "$OUT" "$ERR"
+    fi
+
     for d in "${MAX_ITER[@]}"; do
       suffix="mi${d}"
-
-      # timon no sort but rehash clause
-      OUT="${OUTDIR}/${ID}_timon_rehash_${suffix}.out"; ERR="${ERRDIR}/${ID}_timon_rehash_${suffix}.err"
-      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" timonhash --max-iters %d --no-sort "%s" > "%s" 2> "%s"\n' \
-              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
-      fi
-
-      # mate ref, use sum, two pass
-      OUT="${OUTDIR}/${ID}_twopass_${suffix}.out"; ERR="${ERRDIR}/${ID}_twopass_${suffix}.err"
-      if [[ ! -s "$OUT" && ! -s "$ERR" ]]; then
-        printf 'runsolver -C %d "%s" wlhash --mate-ref --max-iters %d "%s" > "%s" 2> "%s"\n' \
-              "$TIME_LIMIT" "$BIN" "$d" "$LOCAL" "$OUT" "$ERR"
-      fi
 
       # default: mate ref, use sum, one pass
       OUT="${OUTDIR}/${ID}_onepass_${suffix}.out"; ERR="${ERRDIR}/${ID}_onepass_${suffix}.err"
