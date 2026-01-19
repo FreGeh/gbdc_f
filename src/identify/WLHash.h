@@ -22,16 +22,9 @@ struct WLSettings {
     bool print_stats = false;
 };
 
-template <
-    bool one_pass,
-    bool use_xor,
-    bool use_sort,
-    bool mate_ref,
-    bool half_bit_hash
->
 class WLHasher {
 public:
-    using Hash = std::conditional_t<half_bit_hash, uint32_t, uint64_t>;
+    using Hash = uint64_t;
     using Clause = Cl;
 
     struct Stats {
@@ -59,14 +52,7 @@ private:
     };
 
     struct Add { inline void operator()(Hash& h, Hash v) const { h += v; } };
-    struct Xor  { inline void operator()(Hash& h, Hash v) const { 
-        // goldenratio usage: https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
-        if constexpr (half_bit_hash) {
-            h += v * 0x9e3779b9;
-        } else {
-            h += v * 0x9e3779b97f4a7c15; 
-        } } };
-    using Combiner = std::conditional_t<use_xor, Xor, Add>;
+    using Combiner = Add;
 
     const WLSettings& settings;
     const CNFFormula& cnf;
@@ -89,22 +75,12 @@ private:
     }
 
     Hash clause_hash(const Clause& clause) const {
-        if constexpr (use_sort) {
-            std::vector<Hash> sorted_colors;
-            sorted_colors.reserve(clause.size());
-            for (const Lit lit : clause) {
-                sorted_colors.push_back(old_color()(lit));
-            }
-            std::sort(sorted_colors.begin(), sorted_colors.end());
-            return XXH3_64bits(sorted_colors.data(), sorted_colors.size() * sizeof(Hash));
-        } else {
-            Hash combined_hash = 0;
-            Combiner combine;
-            for (const Lit lit : clause) {
-                combine(combined_hash, old_color()(lit));
-            }
-            return XXH3_64bits(&combined_hash, sizeof(combined_hash));
+        Hash combined_hash = 0;
+        Combiner combine;
+        for (const Lit lit : clause) {
+            combine(combined_hash, old_color()(lit));
         }
+        return XXH3_64bits(&combined_hash, sizeof(combined_hash));
     }
 
     void finalize_literal_colors() {
@@ -121,18 +97,15 @@ private:
             const Hash agg_n_color = agg_lc.n;
 
             {
-                Hash features[3] = { old_p_color, agg_p_color, 0 };
-                if constexpr (mate_ref) { features[2] = old_n_color; }
+                Hash features[3] = { old_p_color, agg_p_color, old_n_color };
                 agg_lc.p = XXH3_64bits(features, sizeof(features));
             }
             {
-                Hash features[3] = { old_n_color, agg_n_color, 0 };
-                if constexpr (mate_ref) { features[2] = old_p_color; }
+                Hash features[3] = { old_n_color, agg_n_color, old_p_color };
                 agg_lc.n = XXH3_64bits(features, sizeof(features));
             }
         }
     }
-
 
     void iteration_step_one_pass() {
         for(auto& lc : new_color().colors_by_var) { lc.p = 0; lc.n = 0; }
@@ -142,23 +115,6 @@ private:
             Hash ch = clause_hash(*clause_ptr);
             for (const Lit lit : *clause_ptr) {
                 combine(new_color()(lit), ch);
-            }
-        }
-        finalize_literal_colors();
-    }
-
-    void iteration_step_two_pass() {
-        std::vector<Hash> clause_hashes(cnf.nClauses());
-        for (size_t i = 0; i < cnf.nClauses(); ++i) {
-            clause_hashes[i] = clause_hash(*cnf[i]);
-        }
-        
-        for(auto& lc : new_color().colors_by_var) { lc.p = 0; lc.n = 0; }
-        Combiner combine;
-
-        for (size_t i = 0; i < cnf.nClauses(); ++i) {
-            for (const Lit lit : *cnf[i]) {
-                combine(new_color()(lit), clause_hashes[i]);
             }
         }
         finalize_literal_colors();
@@ -189,11 +145,7 @@ public:
 
     Stats run() {
         while (stats.round < settings.max_iterations) {
-            if constexpr (one_pass) {
-                iteration_step_one_pass();
-            } else {
-                iteration_step_two_pass();
-            }
+            iteration_step_one_pass();
             stats.round++;
 
             if (settings.print_stats) {
