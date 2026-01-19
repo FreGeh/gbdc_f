@@ -58,3 +58,6 @@ makefile
 config.*
 autom4te.cache
 conf.*
+
+# to be deleted
+tobedeleted
