@@ -84,15 +84,75 @@ class CNFFormula {
     }
 
     void normalizeVariableNames() {
-        std::vector<unsigned> map(variables + 1, 0);
-        unsigned next = 1;
+        std::vector<unsigned> seen(variables + 1, 0);
         for (Cl* clause : formula) {
             for (Lit& lit : *clause) {
-                if (map[lit.var()] == 0) map[lit.var()] = next++;
+                seen[lit.var()] = 1;
+            }
+        }
+
+        std::vector<unsigned> map(variables + 1, 0);
+        unsigned next = 1;
+        for (unsigned v = 1; v <= variables; ++v) {
+            if (seen[v]) map[v] = next++;
+        }
+
+        for (Cl* clause : formula) {
+            for (Lit& lit : *clause) {
                 lit = Lit(map[lit.var()], lit.sign());
             }
         }
+
         variables = next - 1;
+    }
+
+    bool hasEmptyClause() const {
+        for (const Cl* clause : formula) {
+            if (clause->empty()) return true;
+        }
+
+        return false;
+    }
+
+    void removeDuplicateClauses() {
+        std::sort(formula.begin(), formula.end(), [](const Cl* a, const Cl* b) {
+            return std::lexicographical_compare(a->begin(), a->end(), b->begin(), b->end());
+        });
+
+        size_t write = 0;
+        total_literals = 0;
+        variables = 0;
+        for (Cl* clause : formula) {
+            bool duplicate = write > 0 && clause->size() == formula[write-1]->size() && std::equal(clause->begin(), clause->end(), formula[write-1]->begin());
+            if (duplicate) {
+                delete clause;
+            } else {
+                formula[write++] = clause;
+                total_literals += clause->size();
+                for (const Lit& lit : *clause) {
+                    variables = std::max(variables, (unsigned)lit.var());
+                }
+            }
+        }
+
+        formula.resize(write);
+        formula.shrink_to_fit();
+    }
+
+    void normalizeLogicalCNF() {
+        removeDuplicateClauses();
+
+        // needed if there is empty clause -> whole formula becomes false
+        if (hasEmptyClause()) {
+            clear();
+            Cl* empty = new Cl();
+            formula.push_back(empty);
+            variables = 0;
+            total_literals = 0;
+            return;
+        }
+
+        normalizeVariableNames();
     }
 
     void readDimacsFromFile(const char* filename) {
