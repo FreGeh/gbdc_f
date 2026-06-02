@@ -20,6 +20,14 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #ifndef ISOHASH2_H_
 #define ISOHASH2_H_
 
+#ifndef ISOHASH2_STABILIZATION_VARIANT
+#define ISOHASH2_STABILIZATION_VARIANT 1
+#endif
+
+#ifndef ISOHASH2_DEDUP_CLAUSES
+#define ISOHASH2_DEDUP_CLAUSES 1
+#endif
+
 #include <vector>
 #include <algorithm>
 #include <iostream>
@@ -27,6 +35,10 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+
+#if ISOHASH2_STABILIZATION_VARIANT == 0
+#include <unordered_map>
+#endif
 
 #define XXH_INLINE_ALL
 #include "src/external/xxhash/xxhash.h"
@@ -80,19 +92,141 @@ private:
         return (x << r) | (x >> (64 - r));
     }
 
-    const IsoHash2Settings& settings;
+#if ISOHASH2_STABILIZATION_VARIANT == 0
+    struct StateKey {
+        Hash p;
+        Hash n;
+
+        bool operator==(const StateKey& other) const {
+            return p == other.p && n == other.n;
+        }
+    };
+
+    struct StateKeyHasher {
+        size_t operator()(const StateKey& key) const {
+            Hash x = key.p ^ rotl64(key.n, 1);
+            return (size_t)fast_mix(x + 0x9e3779b97f4a7c15ULL);
+        }
+    };
+#endif
+
+    struct VarState {
+        Hash p;
+        Hash n;
+        size_t var_idx;
+
+        bool operator<(const VarState& other) const {
+            if (p != other.p) return p < other.p;
+            return n < other.n;
+        }
+
+        bool operator==(const VarState& other) const {
+            return p == other.p && n == other.n;
+        }
+    };
+
+    static inline Hash literal_key(Literal lit) {
+        return (((Hash)lit.var()) << 1) ^ (Hash)lit.sign();
+    }
+
+    static Hash clause_fingerprint(const Clause& clause) {
+        Hash h = fast_mix((Hash)clause.size() + 0x9e3779b97f4a7c15ULL);
+
+        for (const Literal lit : clause) {
+            Hash x = literal_key(lit);
+            h ^= fast_mix(x + 0xbf58476d1ce4e5b9ULL + rotl64(h, 7));
+        }
+
+        return fast_mix(h);
+    }
+
+    static bool same_clause(const Clause& a, const Clause& b) {
+        return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
+    }
+
+    IsoHash2Settings settings;
     const CNFFormula& cnf;
     ColorFunction color_functions[2];
     Stats stats;
 
     std::vector<Hash> partition_buffer;
+    std::vector<size_t> prev_partition_ids;
+    std::vector<size_t> curr_partition_ids;
+    std::vector<VarState> rank_buffer;
     size_t prev_partition_count = 0;
 
-    inline ColorFunction& old_color() { return color_functions[stats.round % 2]; }
-    inline const ColorFunction& old_color() const { return color_functions[stats.round % 2]; }
+    std::vector<const Clause*> active_clauses;
 
-    inline ColorFunction& new_color() { return color_functions[(stats.round + 1) % 2]; }
-    inline const ColorFunction& new_color() const { return color_functions[(stats.round + 1) % 2]; }
+    inline ColorFunction& old_color() {
+        return color_functions[stats.round % 2];
+    }
+
+    inline const ColorFunction& old_color() const {
+        return color_functions[stats.round % 2];
+    }
+
+    inline ColorFunction& new_color() {
+        return color_functions[(stats.round + 1) % 2];
+    }
+
+    inline const ColorFunction& new_color() const {
+        return color_functions[(stats.round + 1) % 2];
+    }
+
+    void build_view() {
+        active_clauses.clear();
+        active_clauses.reserve(cnf.nClauses());
+
+#if ISOHASH2_DEDUP_CLAUSES == 0
+        for (const auto& clause_ptr : cnf) {
+            active_clauses.push_back(clause_ptr);
+        }
+        return;
+#else
+        struct ClauseData {
+            Hash hash;
+            const Clause* ptr;
+        };
+
+        auto clause_less = [](const Clause& a, const Clause& b) {
+            if (a.size() != b.size()) return a.size() < b.size();
+
+            for (size_t i = 0; i < a.size(); ++i) {
+                Hash ka = literal_key(a[i]);
+                Hash kb = literal_key(b[i]);
+
+                if (ka != kb) return ka < kb;
+            }
+
+            return false;
+        };
+
+        std::vector<ClauseData> flat_list;
+        flat_list.reserve(cnf.nClauses());
+
+        for (const auto& clause_ptr : cnf) {
+            flat_list.push_back({clause_fingerprint(*clause_ptr), clause_ptr});
+        }
+
+        std::sort(flat_list.begin(), flat_list.end(),
+            [&](const ClauseData& a, const ClauseData& b) {
+                if (a.hash != b.hash) return a.hash < b.hash;
+                return clause_less(*a.ptr, *b.ptr);
+            }
+        );
+
+        const Clause* last_kept = nullptr;
+
+        for (const ClauseData& item : flat_list) {
+            if (last_kept != nullptr && same_clause(*last_kept, *item.ptr)) {
+                continue;
+            }
+
+            active_clauses.push_back(item.ptr);
+            last_kept = item.ptr;
+        }
+#endif
+    }
 
     inline Hash state_hash_oriented(const LitColors& lc) const {
         Hash p = lc.val[0];
@@ -146,7 +280,7 @@ private:
         auto& nc_vec = new_color().colors_by_var;
         std::memset(nc_vec.data(), 0, nc_vec.size() * sizeof(LitColors));
 
-        for (const auto& clause_ptr : cnf) {
+        for (const Clause* clause_ptr : active_clauses) {
             Hash ch = clause_hash(*clause_ptr);
             for (const Literal lit : *clause_ptr) {
                 new_color()(lit) += ch;
@@ -157,26 +291,75 @@ private:
 
     bool check_stabilization() {
         const size_t n = cnf.nVars();
-        if (partition_buffer.size() != n) partition_buffer.resize(n);
+
+        if (n == 0) {
+            prev_partition_count = 0;
+            return prev_partition_ids.empty();
+        }
 
         const auto& current_colors = old_color().colors_by_var;
+
+#if ISOHASH2_STABILIZATION_VARIANT == 0
+        curr_partition_ids.assign(n, 0);
+
+        std::unordered_map<StateKey, size_t, StateKeyHasher> ids;
+        ids.reserve(n * 2 + 1);
+
+        size_t next_id = 0;
+
         for (size_t i = 1; i <= n; ++i) {
-            partition_buffer[i - 1] = state_hash_oriented(current_colors[i]);
-        }
+            StateKey key { current_colors[i].val[0], current_colors[i].val[1] };
+            auto result = ids.emplace(key, next_id);
 
-        std::sort(partition_buffer.begin(), partition_buffer.end());
-
-        size_t current_partition_count = 0;
-        if (n > 0) {
-            current_partition_count = 1;
-            for (size_t i = 1; i < n; ++i) {
-                current_partition_count += (partition_buffer[i] != partition_buffer[i - 1]);
+            if (result.second) {
+                ++next_id;
             }
+
+            curr_partition_ids[i - 1] = result.first->second;
         }
 
-        bool stable = (current_partition_count == prev_partition_count);
-        prev_partition_count = current_partition_count;
+        bool stable = prev_partition_ids.size() == curr_partition_ids.size() && prev_partition_ids == curr_partition_ids;
+        prev_partition_ids.swap(curr_partition_ids);
+        prev_partition_count = next_id;
         return stable;
+#else
+        for (size_t i = 1; i <= n; ++i) {
+            rank_buffer[i - 1] = {
+                current_colors[i].val[0],
+                current_colors[i].val[1],
+                i - 1
+            };
+        }
+
+        std::sort(rank_buffer.begin(), rank_buffer.end());
+
+        size_t partition_count = 0;
+        size_t begin = 0;
+
+        while (begin < n) {
+            size_t end = begin + 1;
+            size_t min_var_idx = rank_buffer[begin].var_idx;
+
+            while (end < n && rank_buffer[end] == rank_buffer[begin]) {
+                min_var_idx = std::min(min_var_idx, rank_buffer[end].var_idx);
+                ++end;
+            }
+
+            for (size_t i = begin; i < end; ++i) {
+                curr_partition_ids[rank_buffer[i].var_idx] = min_var_idx;
+            }
+
+            ++partition_count;
+            begin = end;
+        }
+
+        bool stable = prev_partition_ids.size() == curr_partition_ids.size()
+                   && prev_partition_ids == curr_partition_ids;
+
+        prev_partition_ids.swap(curr_partition_ids);
+        prev_partition_count = partition_count;
+        return stable;
+#endif
     }
 
 public:
@@ -184,12 +367,22 @@ public:
         settings(s),
         cnf(formula),
         color_functions{ColorFunction(cnf.nVars()), ColorFunction(cnf.nVars())},
-        partition_buffer(cnf.nVars())
-    {}
+        partition_buffer(cnf.nVars()),
+        prev_partition_ids(cnf.nVars(), 0),
+        curr_partition_ids(cnf.nVars(), 0),
+        rank_buffer(cnf.nVars())
+    {
+        build_view();
+    }
 
     Stats run() {
         stats = Stats{};
-        prev_partition_count = 0;
+        prev_partition_count = cnf.nVars() > 0 ? 1 : 0;
+
+        std::fill(prev_partition_ids.begin(), prev_partition_ids.end(), 0);
+        std::fill(curr_partition_ids.begin(), curr_partition_ids.end(), 0);
+        std::fill(color_functions[0].colors_by_var.begin(), color_functions[0].colors_by_var.end(), LitColors{});
+        std::fill(color_functions[1].colors_by_var.begin(), color_functions[1].colors_by_var.end(), LitColors{});
 
         while (stats.round < settings.max_iterations || settings.max_iterations == 0) {
             iteration_step();
@@ -201,14 +394,17 @@ public:
 
             if (stable) {
                 stats.stabilized = true;
-                if (settings.print_stats) std::cerr << "c Stabilized after " << stats.round << " rounds.\n";
+                // if (settings.print_stats) { 
+                    std::cerr << "c Stabilized after " << stats.round << " rounds.\n";
+                // }
                 break;
             }
         }
 
-        if (!stats.stabilized && settings.print_stats) std::cerr << "c Reached max iterations (" << settings.max_iterations << ").\n";
+        if (!stats.stabilized && settings.print_stats) {
+            std::cerr << "c Reached max iterations (" << settings.max_iterations << ").\n";
+        }
 
-        // FINAL HASH
         const size_t n = cnf.nVars();
         if (partition_buffer.size() != n) partition_buffer.resize(n);
 
@@ -224,7 +420,8 @@ public:
 
 inline IsoHash2::Stats isohash2_stats(const char* filename, const IsoHash2Settings& s = {}) {
     CNFFormula cnf(filename);
-    cnf.normalizeLogicalCNF();
+    cnf.normalizeVariableNames();
+
     IsoHash2 hasher(cnf, s);
     return hasher.run();
 }

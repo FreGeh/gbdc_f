@@ -50,6 +50,9 @@ key.pub
 benchmarks/
 test.sh
 build.sh
+slurm
+logs
+build_variants
 Testing/
 data.csv
 # autotools output

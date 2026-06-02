@@ -64,6 +64,7 @@ int main(int argc, char** argv) {
     argparse.add_argument("-m", "--memout").default_value(0).scan<'i', int>().help("Memory limit in MB");
     argparse.add_argument("-f", "--fileout").default_value(0).scan<'i', int>().help("File size limit in MB"); 
     argparse.add_argument("--max-iters").scan<'i', int>().help("Maximum Isohash2 iterations before stopping");
+    argparse.add_argument("--print-stats").default_value(false).implicit_value(true).help("Print Stats for debugging Isohash2");
 
     try {
         argparse.parse_args(argc, argv);
@@ -123,6 +124,7 @@ int main(int argc, char** argv) {
             if (ext == ".cnf") {
                 CNF::IsoHash2Settings config;
 
+                config.print_stats = argparse.get<bool>("--print-stats");
                 if (auto mi = argparse.present<int>("--max-iters")) {
                     config.max_iterations = *mi;
                 }
