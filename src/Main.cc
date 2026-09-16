@@ -57,6 +57,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 #include "src/util/StreamCompressor.h"
 #include "src/transform/cnf2bip.h"
+#include "src/transform/cnf2sig.h"
 #include "src/transform/cnf2kis.h"
 #include "src/transform/cnf2cnf.h"
 
@@ -89,6 +90,7 @@ std::string tool_from_invocation(const std::string& argv0) {
         {"gbd-identify", "identify"},
         {"gbd-cnf2kis", "cnf2kis"},
         {"gbd-cnf2bip", "cnf2bip"},
+        {"gbd-cnf2sig", "cnf2sig"},
         {"gbd-sanitize", "sanitize"},
         {"gbd-normalize", "normalize"},
     };
@@ -310,6 +312,11 @@ int run_transformer(const std::string& tool, const std::string& filename, const 
             derived.emplace_back("nodes", format_value(gen.getFeature("nodes")));
             derived.emplace_back("edges", format_value(gen.getFeature("edges")));
             gen.run();
+        } else if (tool == "cnf2sig") {
+            CNF::cnf2sig gen(filename.c_str(), "");
+            derived.emplace_back("nodes", format_value(gen.getFeature("nodes")));
+            derived.emplace_back("edges", format_value(gen.getFeature("edges")));
+            gen.run();
         } else {
             std::cout.rdbuf(real_cout);
             throw std::runtime_error("unknown transformer: " + tool);
@@ -361,7 +368,7 @@ bool is_extractor(const std::string& tool) {
 }
 
 bool is_transformer(const std::string& tool) {
-    return tool == "cnf2kis" || tool == "sanitize" || tool == "normalize" || tool == "cnf2bip";
+    return tool == "cnf2kis" || tool == "sanitize" || tool == "normalize" || tool == "cnf2bip" || tool == "cnf2sig";
 }
 
 int print_feature_names(const std::string& tool, Mode mode) {
