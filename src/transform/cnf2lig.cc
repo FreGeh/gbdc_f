@@ -1,16 +1,16 @@
 #include "src/util/OutputWrapper.h"
 
-#include "cnf2sig.h"
+#include "cnf2lig.h"
 
-CNF::cnf2sig::cnf2sig(const char* filename, const char* output) : F(), filename_(filename), output_(output) { 
+CNF::cnf2lig::cnf2lig(const char* filename, const char* output) : F(), filename_(filename), output_(output) { 
     F.readDimacsFromFile(filename);
     setFeature("nodes", 2 * F.nVars() + F.nClauses());
     setFeature("edges", F.nVars() + F.nLits());
 }
 
-CNF::cnf2sig::~cnf2sig() { }
+CNF::cnf2lig::~cnf2lig() { }
 
-void CNF::cnf2sig::run() {
+void CNF::cnf2lig::run() {
     std::string outputStr(output_);
     OutputWrapper out(&outputStr);
 

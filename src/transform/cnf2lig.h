@@ -7,16 +7,16 @@
 
 namespace CNF {
 
-// SAT Isomorphism Graph (SIG)
-class cnf2sig : public IExtractor {
+// Literal Incidence Graph (LIG) - encodes polarities
+class cnf2lig : public IExtractor {
  private:
     CNFFormula F;
     const char* filename_;
     const char* output_;
 
  public:
-    cnf2sig(const char* filename, const char* output = nullptr);
-    virtual ~cnf2sig();
+    cnf2lig(const char* filename, const char* output = nullptr);
+    virtual ~cnf2lig();
     virtual void run();
 };
 
